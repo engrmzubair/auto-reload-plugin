@@ -1,13 +1,20 @@
 let reloadIntervalId = null;
 let scrollIntervalId = null;
+let reloadTime = 20000; // default 20s
+let scrollStep = 2;
+let scrollDelay = 40;
 
-// Create buttons
+// Create UI elements
+const container = document.createElement("div");
 const startReloadBtn = document.createElement("button");
 const stopReloadBtn = document.createElement("button");
+const reloadSelect = document.createElement("select");
+
 const startScrollBtn = document.createElement("button");
 const stopScrollBtn = document.createElement("button");
+const scrollSelect = document.createElement("select");
 
-// === Toast Notification ===
+// Toast Notification
 function showToast(msg, color = "#333") {
   const toast = document.createElement("div");
   toast.innerText = msg;
@@ -34,29 +41,25 @@ function showToast(msg, color = "#333") {
   }, 2000);
 }
 
-// === Button State Manager ===
+// Button States
 function updateReloadButtonState() {
   const active = reloadIntervalId !== null;
   startReloadBtn.disabled = active;
-  startReloadBtn.style.opacity = active ? "0.6" : "1";
   stopReloadBtn.disabled = !active;
-  stopReloadBtn.style.opacity = !active ? "0.6" : "1";
 }
 
 function updateScrollButtonState() {
   const active = scrollIntervalId !== null;
   startScrollBtn.disabled = active;
-  startScrollBtn.style.opacity = active ? "0.6" : "1";
   stopScrollBtn.disabled = !active;
-  stopScrollBtn.style.opacity = !active ? "0.6" : "1";
 }
 
-// === Reload Logic ===
+// Auto Reload Logic
 function startAutoReload() {
   if (reloadIntervalId) return;
   reloadIntervalId = setInterval(() => {
     location.reload();
-  }, 20000);
+  }, reloadTime);
   localStorage.removeItem("upworkReloadStopped");
   updateReloadButtonState();
   showToast("✅ Auto-reload started", "#4CAF50");
@@ -72,15 +75,15 @@ function stopAutoReload() {
   }
 }
 
-// === Scroll Logic ===
+// Auto Scroll Logic
 function startAutoScroll() {
   if (scrollIntervalId) return;
   scrollIntervalId = setInterval(() => {
-    window.scrollBy(0, 2);
+    window.scrollBy(0, scrollStep);
     if ((window.innerHeight + window.scrollY) >= document.body.scrollHeight) {
-      stopAutoScroll(); // Stop at bottom
+      stopAutoScroll();
     }
-  }, 40);
+  }, scrollDelay);
   updateScrollButtonState();
   showToast("⬇️ Auto-scroll started", "#2196F3");
 }
@@ -94,40 +97,98 @@ function stopAutoScroll() {
   }
 }
 
-// === Button Creation Utility ===
-function createButton(btn, label, top, left, color, onClick) {
-  btn.innerText = label;
+// Helper to create buttons
+function createButton(btn, text, color, onClick) {
+  btn.innerText = text;
   Object.assign(btn.style, {
-    position: "fixed",
-    top: top,
-    left: left,
     background: color,
     color: "#fff",
-    fontSize: "13px",
-    fontFamily: "sans-serif",
-    padding: "6px 10px",
+    fontSize: "12px",
+    padding: "4px 8px",
+    margin: "0 4px",
     border: "none",
     borderRadius: "4px",
     cursor: "pointer",
-    zIndex: "99999",
-    opacity: "1",
   });
   btn.onclick = onClick;
-  document.body.appendChild(btn);
+  container.appendChild(btn);
 }
 
-// === Create and Attach Buttons ===
-createButton(startReloadBtn, "▶ Start Reload", "10px", "10px", "#4CAF50", startAutoReload);
-createButton(stopReloadBtn, "⏹ Stop Reload", "10px", "120px", "#f44336", stopAutoReload);
-createButton(startScrollBtn, "⬇ Start Scroll", "45px", "10px", "#2196F3", startAutoScroll);
-createButton(stopScrollBtn, "⏹ Stop Scroll", "45px", "120px", "#777", stopAutoScroll);
+// Helper to create selects
+function createSelect(select, options, onChange) {
+  options.forEach(([label, value]) => {
+    const opt = document.createElement("option");
+    opt.text = label;
+    opt.value = value;
+    select.appendChild(opt);
+  });
+  Object.assign(select.style, {
+    fontSize: "12px",
+    padding: "2px 6px",
+    margin: "0 6px",
+  });
+  select.onchange = onChange;
+  container.appendChild(select);
+}
 
-// === Auto Start on Load (if allowed) ===
+// Build UI container
+Object.assign(container.style, {
+  position: "fixed",
+  top: "10px",
+  left: "10px",
+  background: "#fff",
+  border: "1px solid #ddd",
+  borderRadius: "6px",
+  padding: "6px 10px",
+  fontFamily: "sans-serif",
+  fontSize: "12px",
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  zIndex: "99999",
+  boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+});
+
+// Buttons & Selects
+createButton(startReloadBtn, "▶ Reload", "#4CAF50", startAutoReload);
+createButton(stopReloadBtn, "⏹ Reload", "#f44336", stopAutoReload);
+createSelect(reloadSelect, [
+  ["20s", 20000],
+  ["30s", 30000],
+  ["1 min", 60000],
+], (e) => {
+  reloadTime = parseInt(e.target.value);
+  if (reloadIntervalId) {
+    stopAutoReload();
+    startAutoReload();
+  }
+});
+
+createButton(startScrollBtn, "⬇ Scroll", "#2196F3", startAutoScroll);
+createButton(stopScrollBtn, "⏹ Scroll", "#777", stopAutoScroll);
+createSelect(scrollSelect, [
+  ["Slow", JSON.stringify([1, 50])],
+  ["Medium", JSON.stringify([2, 40])],
+  ["Fast", JSON.stringify([4, 25])],
+], (e) => {
+  const [step, delay] = JSON.parse(e.target.value);
+  scrollStep = step;
+  scrollDelay = delay;
+  if (scrollIntervalId) {
+    stopAutoScroll();
+    startAutoScroll();
+  }
+});
+
+// Add UI
+document.body.appendChild(container);
+
+// Auto start on load
 if (localStorage.getItem("upworkReloadStopped") !== "true") {
   startAutoReload();
 }
-startAutoScroll(); // Always start scroll
+startAutoScroll();
 
-// === Sync UI Button States ===
+// Sync UI state
 updateReloadButtonState();
 updateScrollButtonState();
