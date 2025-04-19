@@ -23,11 +23,7 @@ Object.assign(controlWrapper.style, {
 const elements = {
   toggleReloadBtn: createButton("▶ Start Reload", "#4CAF50", toggleReload),
   reloadSelect: createSelect(
-    {
-      "20s": 20000,
-      "30s": 30000,
-      "1 min": 60000,
-    },
+    { "20s": 20000, "30s": 30000, "1 min": 60000 },
     (value) => {
       reloadTime = parseInt(value);
       localStorage.setItem("reloadTime", reloadTime);
@@ -40,11 +36,7 @@ const elements = {
   ),
   toggleScrollBtn: createButton("⬇ Start Scroll", "#2196F3", toggleScroll),
   scrollSelect: createSelect(
-    {
-      "Slow": JSON.stringify([1, 50]),
-      "Medium": JSON.stringify([2, 40]),
-      "Fast": JSON.stringify([4, 25]),
-    },
+    { "Slow": JSON.stringify([1, 50]), "Medium": JSON.stringify([2, 40]), "Fast": JSON.stringify([4, 25]) },
     (value) => {
       [scrollStep, scrollDelay] = JSON.parse(value);
       localStorage.setItem("scrollSpeed", value);
@@ -85,7 +77,7 @@ function showToast(msg, color = "#333") {
   }, 2000);
 }
 
-// === BUTTON / SELECT HELPERS ===
+// === HELPERS ===
 function createButton(label, color, onClick) {
   const btn = document.createElement("button");
   btn.innerText = label;
@@ -222,9 +214,43 @@ container.appendChild(pinButton);
 container.appendChild(controlWrapper);
 document.body.appendChild(container);
 
-// === AUTO START ===
-if (localStorage.getItem("reloadOn") === "true") startReload();
-if (scrollInitiallyOn) startScroll();
+// === GLOBAL TOGGLE BUTTON (Under Toolbar) ===
+const globalToggleBtn = document.createElement("button");
+Object.assign(globalToggleBtn.style, {
+  position: "fixed",
+  top: "58px", // 10px below the 48px height of the toolbar
+  left: "10px",
+  width: "36px",
+  height: "36px",
+  background: "#9c27b0",
+  color: "#fff",
+  fontSize: "18px",
+  border: "none",
+  borderRadius: "50%",
+  cursor: "pointer",
+  boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+  zIndex: "99999",
+});
+globalToggleBtn.title = "Start/Stop All";
+globalToggleBtn.onclick = () => {
+  const isRunning = reloadIntervalId || scrollIntervalId;
+  if (isRunning) {
+    stopReload();
+    stopScroll();
+    showToast("⏹ Everything stopped", "#9c27b0");
+  } else {
+    startReload();
+    startScroll();
+    showToast("▶ Everything started", "#9c27b0");
+  }
+  updateGlobalToggleIcon();
+};
+function updateGlobalToggleIcon() {
+  const isRunning = reloadIntervalId || scrollIntervalId;
+  globalToggleBtn.innerText = isRunning ? "⏹" : "▶";
+  globalToggleBtn.title = isRunning ? "Stop All" : "Start All";
+}
+document.body.appendChild(globalToggleBtn);
 
 // === BACK TO TOP BUTTON ===
 const backToTopBtn = document.createElement("button");
@@ -243,7 +269,7 @@ Object.assign(backToTopBtn.style, {
   cursor: "pointer",
   boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
   zIndex: "99999",
-  display: "none", // Hidden by default
+  display: "none",
 });
 backToTopBtn.title = "Back to top";
 backToTopBtn.onclick = () => {
@@ -251,8 +277,11 @@ backToTopBtn.onclick = () => {
 };
 document.body.appendChild(backToTopBtn);
 
-// Show button only when scrolled down
 window.addEventListener("scroll", () => {
   backToTopBtn.style.display = window.scrollY > 300 ? "block" : "none";
 });
 
+// === AUTO START ===
+if (localStorage.getItem("reloadOn") === "true") startReload();
+if (scrollInitiallyOn) startScroll();
+updateGlobalToggleIcon();
