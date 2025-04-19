@@ -1,18 +1,13 @@
 let reloadIntervalId = null;
 let scrollIntervalId = null;
 
-// === Load from localStorage ===
 let reloadTime = parseInt(localStorage.getItem("reloadTime")) || 20000;
-let scrollStep = 2;
-let scrollDelay = 40;
-let scrollSettings = localStorage.getItem("scrollSpeed");
-if (scrollSettings) {
-  [scrollStep, scrollDelay] = JSON.parse(scrollSettings);
-}
+let [scrollStep, scrollDelay] = JSON.parse(localStorage.getItem("scrollSpeed") || "[2,40]");
 let isCollapsed = localStorage.getItem("toolbarCollapsed") === "true";
 let scrollInitiallyOn = localStorage.getItem("scrollOn") !== "false";
+let isDarkMode = localStorage.getItem("toolbarDarkMode") === "true";
 
-// === Create UI Elements ===
+// === UI ELEMENTS ===
 const container = document.createElement("div");
 const pinButton = document.createElement("button");
 pinButton.innerText = isCollapsed ? "📂" : "📌";
@@ -51,9 +46,7 @@ const elements = {
       "Fast": JSON.stringify([4, 25]),
     },
     (value) => {
-      const [step, delay] = JSON.parse(value);
-      scrollStep = step;
-      scrollDelay = delay;
+      [scrollStep, scrollDelay] = JSON.parse(value);
       localStorage.setItem("scrollSpeed", value);
       if (scrollIntervalId) {
         stopScroll();
@@ -62,9 +55,24 @@ const elements = {
     },
     JSON.stringify([scrollStep, scrollDelay])
   ),
+  darkToggle: createButton(isDarkMode ? "☀ Light Mode" : "🌙 Dark Mode", "#555", toggleDarkMode)
 };
 
-// === Toast Notification ===
+// === MAIN FUNCTIONS ===
+function toggleReload() {
+  reloadIntervalId ? stopReload() : startReload();
+}
+function toggleScroll() {
+  scrollIntervalId ? stopScroll() : startScroll();
+}
+function toggleDarkMode() {
+  isDarkMode = !isDarkMode;
+  localStorage.setItem("toolbarDarkMode", isDarkMode);
+  applyTheme();
+  elements.darkToggle.innerText = isDarkMode ? "☀ Light Mode" : "🌙 Dark Mode";
+}
+
+// === TOAST ===
 function showToast(msg, color = "#333") {
   const toast = document.createElement("div");
   Object.assign(toast.style, toastStyle());
@@ -77,7 +85,7 @@ function showToast(msg, color = "#333") {
   }, 2000);
 }
 
-// === Button & Select Helpers ===
+// === BUTTON / SELECT HELPERS ===
 function createButton(label, color, onClick) {
   const btn = document.createElement("button");
   btn.innerText = label;
@@ -86,7 +94,6 @@ function createButton(label, color, onClick) {
   controlWrapper.appendChild(btn);
   return btn;
 }
-
 function createSelect(optionsObj, onChange, defaultValue) {
   const select = document.createElement("select");
   Object.entries(optionsObj).forEach(([label, value]) => {
@@ -102,7 +109,7 @@ function createSelect(optionsObj, onChange, defaultValue) {
   return select;
 }
 
-// === Reload Logic ===
+// === AUTO RELOAD ===
 function startReload() {
   reloadIntervalId = setInterval(() => location.reload(), reloadTime);
   elements.toggleReloadBtn.innerText = "⏹ Stop Reload";
@@ -110,7 +117,6 @@ function startReload() {
   localStorage.setItem("reloadOn", "true");
   showToast("✅ Auto-reload started", "#4CAF50");
 }
-
 function stopReload() {
   clearInterval(reloadIntervalId);
   reloadIntervalId = null;
@@ -120,11 +126,7 @@ function stopReload() {
   showToast("🛑 Auto-reload stopped", "#f44336");
 }
 
-function toggleReload() {
-  reloadIntervalId ? stopReload() : startReload();
-}
-
-// === Scroll Logic ===
+// === AUTO SCROLL ===
 function startScroll() {
   scrollIntervalId = setInterval(() => {
     window.scrollBy(0, scrollStep);
@@ -137,7 +139,6 @@ function startScroll() {
   localStorage.setItem("scrollOn", "true");
   showToast("⬇️ Auto-scroll started", "#2196F3");
 }
-
 function stopScroll() {
   clearInterval(scrollIntervalId);
   scrollIntervalId = null;
@@ -147,11 +148,13 @@ function stopScroll() {
   showToast("🛑 Auto-scroll stopped", "#777");
 }
 
-function toggleScroll() {
-  scrollIntervalId ? stopScroll() : startScroll();
+// === THEME + COLLAPSE TOGGLE ===
+function applyTheme() {
+  const isDark = localStorage.getItem("toolbarDarkMode") === "true";
+  container.style.background = isDark ? "#2c2c2c" : "#fff";
+  container.style.border = isDark ? "1px solid #555" : "1px solid #ddd";
+  container.style.color = isDark ? "#eee" : "#000";
 }
-
-// === Collapse / Expand Logic ===
 pinButton.onclick = () => {
   isCollapsed = !isCollapsed;
   controlWrapper.style.display = isCollapsed ? "none" : "flex";
@@ -160,7 +163,7 @@ pinButton.onclick = () => {
   localStorage.setItem("toolbarCollapsed", isCollapsed);
 };
 
-// === Styling Helpers ===
+// === STYLING HELPERS ===
 function buttonStyle(bgColor) {
   return {
     background: bgColor,
@@ -173,7 +176,6 @@ function buttonStyle(bgColor) {
     cursor: "pointer",
   };
 }
-
 function selectStyle() {
   return {
     fontSize: "12px",
@@ -181,7 +183,6 @@ function selectStyle() {
     margin: "0 6px",
   };
 }
-
 function toastStyle() {
   return {
     position: "fixed",
@@ -200,13 +201,11 @@ function toastStyle() {
   };
 }
 
-// === UI Layout ===
+// === UI LAYOUT ===
 Object.assign(container.style, {
   position: "fixed",
   top: "10px",
   left: "10px",
-  background: "#fff",
-  border: "1px solid #ddd",
   borderRadius: "6px",
   padding: "6px 8px",
   fontFamily: "sans-serif",
@@ -216,16 +215,13 @@ Object.assign(container.style, {
   zIndex: "99999",
   boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
 });
+applyTheme();
 
-// === Build UI ===
+// === BUILD UI ===
 container.appendChild(pinButton);
 container.appendChild(controlWrapper);
 document.body.appendChild(container);
 
-// === Restore Saved States ===
-if (localStorage.getItem("reloadOn") === "true") {
-  startReload();
-}
-if (scrollInitiallyOn) {
-  startScroll();
-}
+// === AUTO START ===
+if (localStorage.getItem("reloadOn") === "true") startReload();
+if (scrollInitiallyOn) startScroll();
