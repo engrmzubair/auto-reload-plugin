@@ -1,52 +1,67 @@
 let reloadIntervalId = null;
 let scrollIntervalId = null;
-let reloadTime = 20000;
+
+// === Load from localStorage ===
+let reloadTime = parseInt(localStorage.getItem("reloadTime")) || 20000;
 let scrollStep = 2;
 let scrollDelay = 40;
-
-let isCollapsed = false; // Track toggle state
+let scrollSettings = localStorage.getItem("scrollSpeed");
+if (scrollSettings) {
+  [scrollStep, scrollDelay] = JSON.parse(scrollSettings);
+}
+let isCollapsed = localStorage.getItem("toolbarCollapsed") === "true";
+let scrollInitiallyOn = localStorage.getItem("scrollOn") !== "false";
 
 // === Create UI Elements ===
 const container = document.createElement("div");
 const pinButton = document.createElement("button");
-pinButton.innerText = "📌";
-pinButton.title = "Collapse / Expand Toolbar";
-pinButton.style.marginRight = "8px";
+pinButton.innerText = isCollapsed ? "📂" : "📌";
+pinButton.title = isCollapsed ? "Expand Toolbar" : "Collapse Toolbar";
 
 const controlWrapper = document.createElement("div");
+Object.assign(controlWrapper.style, {
+  display: isCollapsed ? "none" : "flex",
+  alignItems: "center",
+  gap: "6px",
+});
+
 const elements = {
-  toggleReloadBtn: createButton("▶ Start Reload", "#4CAF50", () => toggleReload()),
+  toggleReloadBtn: createButton("▶ Start Reload", "#4CAF50", toggleReload),
   reloadSelect: createSelect(
     {
       "20s": 20000,
       "30s": 30000,
-      "1 min": 60000
+      "1 min": 60000,
     },
     (value) => {
       reloadTime = parseInt(value);
+      localStorage.setItem("reloadTime", reloadTime);
       if (reloadIntervalId) {
         stopReload();
         startReload();
       }
-    }
+    },
+    reloadTime
   ),
-  toggleScrollBtn: createButton("⬇ Start Scroll", "#2196F3", () => toggleScroll()),
+  toggleScrollBtn: createButton("⬇ Start Scroll", "#2196F3", toggleScroll),
   scrollSelect: createSelect(
     {
       "Slow": JSON.stringify([1, 50]),
       "Medium": JSON.stringify([2, 40]),
-      "Fast": JSON.stringify([4, 25])
+      "Fast": JSON.stringify([4, 25]),
     },
     (value) => {
       const [step, delay] = JSON.parse(value);
       scrollStep = step;
       scrollDelay = delay;
+      localStorage.setItem("scrollSpeed", value);
       if (scrollIntervalId) {
         stopScroll();
         startScroll();
       }
-    }
-  )
+    },
+    JSON.stringify([scrollStep, scrollDelay])
+  ),
 };
 
 // === Toast Notification ===
@@ -62,7 +77,7 @@ function showToast(msg, color = "#333") {
   }, 2000);
 }
 
-// === Button/Select Helpers ===
+// === Button & Select Helpers ===
 function createButton(label, color, onClick) {
   const btn = document.createElement("button");
   btn.innerText = label;
@@ -72,12 +87,13 @@ function createButton(label, color, onClick) {
   return btn;
 }
 
-function createSelect(optionsObj, onChange) {
+function createSelect(optionsObj, onChange, defaultValue) {
   const select = document.createElement("select");
   Object.entries(optionsObj).forEach(([label, value]) => {
     const opt = document.createElement("option");
     opt.text = label;
     opt.value = value;
+    if (value == defaultValue) opt.selected = true;
     select.appendChild(opt);
   });
   Object.assign(select.style, selectStyle());
@@ -91,7 +107,7 @@ function startReload() {
   reloadIntervalId = setInterval(() => location.reload(), reloadTime);
   elements.toggleReloadBtn.innerText = "⏹ Stop Reload";
   elements.toggleReloadBtn.style.background = "#f44336";
-  localStorage.removeItem("upworkReloadStopped");
+  localStorage.setItem("reloadOn", "true");
   showToast("✅ Auto-reload started", "#4CAF50");
 }
 
@@ -100,7 +116,7 @@ function stopReload() {
   reloadIntervalId = null;
   elements.toggleReloadBtn.innerText = "▶ Start Reload";
   elements.toggleReloadBtn.style.background = "#4CAF50";
-  localStorage.setItem("upworkReloadStopped", "true");
+  localStorage.setItem("reloadOn", "false");
   showToast("🛑 Auto-reload stopped", "#f44336");
 }
 
@@ -118,6 +134,7 @@ function startScroll() {
   }, scrollDelay);
   elements.toggleScrollBtn.innerText = "⏹ Stop Scroll";
   elements.toggleScrollBtn.style.background = "#777";
+  localStorage.setItem("scrollOn", "true");
   showToast("⬇️ Auto-scroll started", "#2196F3");
 }
 
@@ -126,6 +143,7 @@ function stopScroll() {
   scrollIntervalId = null;
   elements.toggleScrollBtn.innerText = "⬇ Start Scroll";
   elements.toggleScrollBtn.style.background = "#2196F3";
+  localStorage.setItem("scrollOn", "false");
   showToast("🛑 Auto-scroll stopped", "#777");
 }
 
@@ -133,12 +151,13 @@ function toggleScroll() {
   scrollIntervalId ? stopScroll() : startScroll();
 }
 
-// === Collapse / Expand Toolbar ===
+// === Collapse / Expand Logic ===
 pinButton.onclick = () => {
   isCollapsed = !isCollapsed;
   controlWrapper.style.display = isCollapsed ? "none" : "flex";
   pinButton.innerText = isCollapsed ? "📂" : "📌";
   pinButton.title = isCollapsed ? "Expand Toolbar" : "Collapse Toolbar";
+  localStorage.setItem("toolbarCollapsed", isCollapsed);
 };
 
 // === Styling Helpers ===
@@ -181,7 +200,7 @@ function toastStyle() {
   };
 }
 
-// === UI Container Styling ===
+// === UI Layout ===
 Object.assign(container.style, {
   position: "fixed",
   top: "10px",
@@ -198,19 +217,15 @@ Object.assign(container.style, {
   boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
 });
 
-Object.assign(controlWrapper.style, {
-  display: "flex",
-  alignItems: "center",
-  gap: "6px",
-});
-
-// === Build & Attach UI ===
+// === Build UI ===
 container.appendChild(pinButton);
 container.appendChild(controlWrapper);
 document.body.appendChild(container);
 
-// === Auto Start & Sync ===
-if (localStorage.getItem("upworkReloadStopped") !== "true") {
+// === Restore Saved States ===
+if (localStorage.getItem("reloadOn") === "true") {
   startReload();
 }
-startScroll();
+if (scrollInitiallyOn) {
+  startScroll();
+}
