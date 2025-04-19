@@ -23,7 +23,7 @@ Object.assign(controlWrapper.style, {
 const elements = {
   toggleReloadBtn: createButton("▶ Start Reload", "#4CAF50", toggleReload),
   reloadSelect: createSelect(
-    { "20s": 20000, "30s": 30000, "1 min": 60000 },
+    { "20s": 20000, "30s": 30000, "40s": 40000, "1 min": 60000 },
     (value) => {
       reloadTime = parseInt(value);
       localStorage.setItem("reloadTime", reloadTime);
