@@ -225,3 +225,34 @@ document.body.appendChild(container);
 // === AUTO START ===
 if (localStorage.getItem("reloadOn") === "true") startReload();
 if (scrollInitiallyOn) startScroll();
+
+// === BACK TO TOP BUTTON ===
+const backToTopBtn = document.createElement("button");
+backToTopBtn.innerText = "⬆";
+Object.assign(backToTopBtn.style, {
+  position: "fixed",
+  bottom: "20px",
+  left: "20px",
+  width: "36px",
+  height: "36px",
+  background: "#444",
+  color: "#fff",
+  border: "none",
+  borderRadius: "50%",
+  fontSize: "18px",
+  cursor: "pointer",
+  boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+  zIndex: "99999",
+  display: "none", // Hidden by default
+});
+backToTopBtn.title = "Back to top";
+backToTopBtn.onclick = () => {
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+document.body.appendChild(backToTopBtn);
+
+// Show button only when scrolled down
+window.addEventListener("scroll", () => {
+  backToTopBtn.style.display = window.scrollY > 300 ? "block" : "none";
+});
+
