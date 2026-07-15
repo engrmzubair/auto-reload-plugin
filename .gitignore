@@ -1,0 +1,26 @@
+# Claude
+.claude/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Node.js (if you add build tooling later)
+node_modules/
+dist/
+
+# IDEs
+.vscode/
+.idea/
+
+# Environment files
+.env
+.env.*  
+
+*.dom.txt
