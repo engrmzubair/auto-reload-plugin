@@ -43,7 +43,15 @@
   <input type="text" id="ntfyTopic" placeholder="e.g. zubair-upwork-x7k2">
   <div class="hint">Install the ntfy app, subscribe to this exact topic. Pick something unguessable — anyone who knows it can read your alerts.</div>
 
-  <label>Auto-reload interval (seconds)</label>
+  <label>Only ring for jobs newer than (minutes)</label>
+  <input type="number" id="ringMaxAgeMin">
+  <div class="hint">Stops a first-capture backlog from ringing a dozen times for jobs that already have 50+ proposals.</div>
+
+  <label>Discard jobs older than (hours)</label>
+  <input type="number" id="maxAgeHours">
+  <div class="hint">Aged out by <em>posted</em> time. Storage also caps at 400 jobs, newest kept.</div>
+
+  <label>Auto-refresh interval (seconds)</label>
   <input type="number" id="reloadSec">
 
   <button id="save">Save</button>
