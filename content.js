@@ -378,7 +378,6 @@ panel.innerHTML = `
     <button id="uwr-reload">▶ Auto</button>
     <button id="uwr-sort" title="Toggle ordering">Newest</button>
     <button id="uwr-filtered" title="Show what the rules killed, and why">Filtered</button>
-    <button id="uwr-copy" title="Copy the full diagnostic to the clipboard">⧉ Copy</button>
     <button id="uwr-test">🔔 Test</button>
     <button id="uwr-clear">Clear</button>
   </div>`;
@@ -393,31 +392,23 @@ function mount() {
 
   panel.querySelector("#uwr-now").onclick = () => refreshFeed();
 
-  // The panel crops long frame strings, which is exactly the detail that matters
-  // when diagnosing. Hand over the whole thing as text instead.
-  const copyBtn = panel.querySelector("#uwr-copy");
-  copyBtn.onclick = async () => {
+  // Diagnostics moved to the console (see the UWR_DEBUG handler) now that
+  // capture works. window.__uwrDiag() dumps the same report if this ever breaks
+  // again -- Upwork will change their frontend eventually.
+  window.__uwrDiag = () => {
     const rows = [...recon.entries()].map(
       ([alias, i]) => `${i.hooked ? "HOOKED" : "blind "}  ${alias}  <- ${i.frame}`
     );
-    const text = [
-      `Job Radar diagnostic — ${new Date().toISOString()}`,
-      `url: ${location.href}`,
-      `panel: ${panel.querySelector("#uwr-count").textContent}`,
-      `status: ${status.text}`,
-      `jobs stored: ${jobs.length}`,
-      "",
-      `recon (${rows.length} aliases):`,
-      ...rows,
-    ].join("\n");
-    try {
-      await navigator.clipboard.writeText(text);
-      copyBtn.textContent = "✓ Copied";
-    } catch (_) {
-      copyBtn.textContent = "see console";
-      console.log(text);
-    }
-    setTimeout(() => (copyBtn.textContent = "⧉ Copy"), 1500);
+    console.log(
+      [
+        `Job Radar — ${new Date().toISOString()}`,
+        `status: ${status.text}`,
+        `jobs stored: ${jobs.length} · dismissed: ${dismissed.size}`,
+        "",
+        `recon (${rows.length} aliases):`,
+        ...rows,
+      ].join("\n")
+    );
   };
 
   const reloadBtn = panel.querySelector("#uwr-reload");
