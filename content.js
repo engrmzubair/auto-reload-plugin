@@ -185,11 +185,11 @@ window.addEventListener("UWR_DEBUG", (e) => {
     console.info("[radar] hooked feed frame:", d.frame, d.alias);
   } else if (d.stage === "hook-bypassed") {
     // The decisive symptom: hooked, a feed call fired, nothing came back.
-    setStatus(`BYPASSED: ${d.alias} fired through a hooked frame but never reached us`, "err");
+    setStatus(`hook bypassed — ${d.alias} never reached us`, "err");
     console.warn("[radar] hook bypassed — app holds its own fetch reference:", d);
-  } else if (d.stage === "feed-captured") setStatus(`captured ${d.count} jobs via ${d.via} (${d.frame})`, "ok");
-  else if (d.stage === "graphql-seen-no-results") setStatus(`graphql in ${d.frame}: ${(d.keys || []).join(",")}`);
-  else if (d.stage === "injected" && recon.size === 0) setStatus(`live in ${d.frame} — hit ↻ Refresh`);
+  }
+  // Everything else (every alias Upwork fires, every non-feed response) is
+  // console-only. The status line is for things you'd act on, not a log tail.
 });
 
 window.addEventListener("UWR_FEED", (e) => {
@@ -210,11 +210,8 @@ window.addEventListener("UWR_FEED", (e) => {
     if (scored.verdict !== window.UWR.VERDICT.HIDE) fresh.push(scored);
   }
 
-  const feedName = (e.detail && e.detail.feed) || "feed";
-  setStatus(
-    `${feedName}: ${results.length} seen, ${fresh.length} new · ${new Date().toLocaleTimeString()}`,
-    "ok"
-  );
+  const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  setStatus(`${results.length} seen · ${fresh.length} new · ${time}`, "ok");
 
   if (!fresh.length) {
     render();
@@ -241,18 +238,65 @@ window.addEventListener("UWR_FEED", (e) => {
 
 // ---------- panel ----------
 
+// Emoji render at different sizes in different fonts and can't be aligned or
+// recoloured. Stroke icons share one grid, inherit currentColor, and stay put.
+const svg = (body, fill) =>
+  `<svg viewBox="0 0 24 24" fill="${fill ? "currentColor" : "none"}" stroke="${
+    fill ? "none" : "currentColor"
+  }" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+
+const ICON = {
+  refresh: svg(
+    '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>'
+  ),
+  play: svg('<polygon points="6 3 20 12 6 21 6 3"/>', true),
+  pause: svg('<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>', true),
+  clock: svg('<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>'),
+  star: svg('<polygon points="12 2.5 14.9 8.4 21.4 9.3 16.7 13.9 17.8 20.4 12 17.3 6.2 20.4 7.3 13.9 2.6 9.3 9.1 8.4 12 2.5"/>', true),
+  eye: svg('<path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/>'),
+  bell: svg('<path d="M18 8.5A6 6 0 0 0 6 8.5c0 7-3 8.5-3 8.5h18s-3-1.5-3-8.5"/><path d="M13.7 20.5a2 2 0 0 1-3.4 0"/>'),
+  trash: svg('<polyline points="3 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'),
+  check: svg('<polyline points="20 6 9 17 4 12"/>'),
+  left: svg('<polyline points="15 18 9 12 15 6"/>'),
+  right: svg('<polyline points="9 18 15 12 9 6"/>'),
+};
+
 const panel = document.createElement("div");
 panel.id = "uwr-panel";
 const style = document.createElement("style");
 style.textContent = `
 #uwr-panel{position:fixed;top:0;right:0;width:380px;height:100vh;background:#14181d;color:#e8eaed;
   font:13px/1.45 system-ui,sans-serif;z-index:2147483000;display:flex;flex-direction:column;
-  box-shadow:-2px 0 16px rgba(0,0,0,.4);transition:transform .2s}
-#uwr-panel.collapsed{transform:translateX(368px)}
-#uwr-head{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#0e1116;border-bottom:1px solid #262c34}
-#uwr-head b{font-size:13px;letter-spacing:.02em}
-#uwr-grip{cursor:pointer;background:#262c34;border:0;color:#e8eaed;border-radius:4px;padding:4px 7px;font-size:14px}
-#uwr-count{margin-left:auto;font-size:11px;color:#8b949e}
+  box-shadow:-2px 0 16px rgba(0,0,0,.4);overflow:hidden;transition:width .18s ease}
+/* Collapse to a rail wide enough to hold a real button. The old version slid the
+   panel off-screen and left a 12px sliver -- narrower than the grip itself, so
+   once collapsed there was no way back. */
+#uwr-panel.collapsed{width:40px}
+#uwr-panel.collapsed #uwr-head b,#uwr-panel.collapsed #uwr-count,#uwr-panel.collapsed #uwr-list,
+#uwr-panel.collapsed #uwr-status,#uwr-panel.collapsed #uwr-foot{display:none}
+#uwr-panel.collapsed #uwr-mini{display:flex}
+#uwr-panel.collapsed #uwr-head{padding:10px 8px;justify-content:center;border-bottom:1px solid #262c34}
+
+#uwr-head{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#0e1116;border-bottom:1px solid #262c34;flex:none}
+#uwr-head b{font-size:13px;letter-spacing:.02em;white-space:nowrap}
+#uwr-grip{cursor:pointer;background:transparent;border:0;color:#8b949e;border-radius:5px;
+  width:24px;height:24px;flex:none;display:flex;align-items:center;justify-content:center;padding:0}
+#uwr-grip:hover{background:#262c34;color:#e8eaed}
+#uwr-grip svg{width:15px;height:15px}
+#uwr-count{margin-left:auto;font-size:11px;color:#8b949e;white-space:nowrap}
+
+/* Collapsed rail: the three numbers that tell you whether to look. */
+#uwr-mini{display:none;flex-direction:column;align-items:center;gap:14px;padding:14px 0}
+.uwr-mstat{position:relative;display:flex;flex-direction:column;align-items:center;cursor:default}
+.uwr-mstat b{font-size:14px;font-weight:700;line-height:1}
+.uwr-mstat i{width:5px;height:5px;border-radius:50%;margin-top:4px;font-style:normal}
+.uwr-mstat.ring b{color:#f85149} .uwr-mstat.ring i{background:#f85149}
+.uwr-mstat.kept b{color:#3fb950} .uwr-mstat.kept i{background:#3fb950}
+.uwr-mstat.filt b{color:#6e7681} .uwr-mstat.filt i{background:#6e7681}
+.uwr-mstat::after{content:attr(data-label);position:absolute;right:calc(100% + 8px);top:0;
+  background:#0b0e12;color:#e8eaed;border:1px solid #30363d;border-radius:4px;padding:3px 7px;
+  font-size:10px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s}
+.uwr-mstat:hover::after{opacity:1}
 #uwr-list{flex:1;overflow-y:auto;padding:8px}
 .uwr-card{position:relative;background:#1b2027;border:1px solid #262c34;border-left-width:3px;border-radius:6px;padding:9px 10px;margin-bottom:7px}
 .uwr-x{position:absolute;top:5px;right:5px;width:18px;height:18px;line-height:1;border:0;border-radius:3px;
@@ -275,10 +319,22 @@ style.textContent = `
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #uwr-status.ok{color:#3fb950}
 #uwr-status.err{color:#f85149}
-#uwr-foot{padding:7px 12px;background:#0e1116;display:flex;gap:6px;align-items:center}
-#uwr-foot button{background:#262c34;border:0;color:#c9d1d9;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer}
-#uwr-foot button:hover{background:#30363d}
+#uwr-foot{padding:8px 10px;background:#0e1116;display:flex;gap:3px;align-items:center;flex:none}
+.uwr-sep{width:1px;height:18px;background:#262c34;margin:0 6px;flex:none}
+#uwr-foot button{position:relative;width:34px;height:34px;flex:none;background:transparent;border:0;
+  color:#8b949e;border-radius:6px;cursor:pointer;padding:0;
+  display:flex;align-items:center;justify-content:center;transition:background .1s,color .1s}
+#uwr-foot button svg{width:17px;height:17px;display:block}
+#uwr-foot button:hover{background:#262c34;color:#e8eaed}
 #uwr-foot button.on{background:#1f6feb;color:#fff}
+/* Label on hover instead of permanently: the icons carry the meaning, the words
+   are only needed the first few times. */
+#uwr-foot button::after{content:attr(data-label);position:absolute;bottom:calc(100% + 7px);left:50%;
+  transform:translateX(-50%);background:#0b0e12;color:#e8eaed;border:1px solid #30363d;border-radius:4px;
+  padding:3px 7px;font-size:10px;font-weight:500;white-space:nowrap;opacity:0;pointer-events:none;
+  transition:opacity .12s;z-index:2}
+#uwr-foot button:hover::after{opacity:1}
+#uwr-foot #uwr-clear:hover{background:#3a1416;color:#f85149}
 `;
 document.documentElement.appendChild(style);
 
@@ -352,6 +408,16 @@ function render() {
   const hidden = jobs.length - kept.length;
   count.textContent = `${rings} ring · ${kept.length} kept · ${hidden} filtered`;
 
+  // Same three numbers, readable at 40px wide, so a collapsed panel still tells
+  // you whether it's worth opening.
+  const mini = panel.querySelector("#uwr-mini");
+  if (mini) {
+    mini.innerHTML =
+      `<div class="uwr-mstat ring" data-label="${rings} ringing"><b>${rings}</b><i></i></div>` +
+      `<div class="uwr-mstat kept" data-label="${kept.length} kept"><b>${kept.length}</b><i></i></div>` +
+      `<div class="uwr-mstat filt" data-label="${hidden} filtered out"><b>${hidden}</b><i></i></div>`;
+  }
+
   const shown = (showHidden ? jobs.slice() : kept.slice()).sort((a, b) =>
     settings.sortBy === "score" ? b.score - a.score : (b.postedAt || 0) - (a.postedAt || 0)
   );
@@ -367,28 +433,38 @@ function render() {
 
 panel.innerHTML = `
   <div id="uwr-head">
-    <button id="uwr-grip" title="Collapse">❯</button>
+    <button id="uwr-grip">${ICON.right}</button>
     <b>Job Radar</b>
     <span id="uwr-count"></span>
   </div>
+  <div id="uwr-mini"></div>
   <div id="uwr-list"></div>
   <div id="uwr-status">waiting for feed…</div>
   <div id="uwr-foot">
-    <button id="uwr-now" title="Fetch the feed now">↻ Refresh</button>
-    <button id="uwr-reload">▶ Auto</button>
-    <button id="uwr-sort" title="Toggle ordering">Newest</button>
-    <button id="uwr-filtered" title="Show what the rules killed, and why">Filtered</button>
-    <button id="uwr-test">🔔 Test</button>
-    <button id="uwr-clear">Clear</button>
+    <button id="uwr-now" data-label="Refresh now">${ICON.refresh}</button>
+    <button id="uwr-reload" data-label="Auto-refresh off">${ICON.play}</button>
+    <i class="uwr-sep"></i>
+    <button id="uwr-sort" data-label="Newest first">${ICON.clock}</button>
+    <button id="uwr-filtered" data-label="Show filtered">${ICON.eye}</button>
+    <i class="uwr-sep"></i>
+    <button id="uwr-test" data-label="Test alert">${ICON.bell}</button>
+    <button id="uwr-clear" data-label="Clear all">${ICON.trash}</button>
   </div>`;
 
 function mount() {
   document.body.appendChild(panel);
 
-  panel.querySelector("#uwr-grip").onclick = () => {
-    panel.classList.toggle("collapsed");
-    panel.querySelector("#uwr-grip").textContent = panel.classList.contains("collapsed") ? "❮" : "❯";
+  const grip = panel.querySelector("#uwr-grip");
+  grip.onclick = () => {
+    const collapsed = panel.classList.toggle("collapsed");
+    grip.innerHTML = collapsed ? ICON.left : ICON.right;
+    settings.collapsed = collapsed;
+    saveSettings();
   };
+  if (settings.collapsed) {
+    panel.classList.add("collapsed");
+    grip.innerHTML = ICON.left;
+  }
 
   panel.querySelector("#uwr-now").onclick = () => refreshFeed();
 
@@ -413,7 +489,10 @@ function mount() {
 
   const reloadBtn = panel.querySelector("#uwr-reload");
   function paintReload() {
-    reloadBtn.textContent = settings.reloadOn ? "⏹ Auto" : "▶ Auto";
+    reloadBtn.innerHTML = settings.reloadOn ? ICON.pause : ICON.play;
+    reloadBtn.dataset.label = settings.reloadOn
+      ? `Auto-refresh on (${Math.round(settings.reloadMs / 1000)}s)`
+      : "Auto-refresh off";
     reloadBtn.classList.toggle("on", !!settings.reloadOn);
   }
   reloadBtn.onclick = () => {
@@ -435,7 +514,10 @@ function mount() {
 
   const sortBtn = panel.querySelector("#uwr-sort");
   function paintSort() {
-    sortBtn.textContent = settings.sortBy === "score" ? "Best" : "Newest";
+    const byScore = settings.sortBy === "score";
+    // The icon states what you're looking at now, not what clicking would do.
+    sortBtn.innerHTML = byScore ? ICON.star : ICON.clock;
+    sortBtn.dataset.label = byScore ? "Best first" : "Newest first";
   }
   sortBtn.onclick = () => {
     settings.sortBy = settings.sortBy === "score" ? "new" : "score";
@@ -449,6 +531,7 @@ function mount() {
   filteredBtn.onclick = () => {
     showHidden = !showHidden;
     filteredBtn.classList.toggle("on", showHidden);
+    filteredBtn.dataset.label = showHidden ? "Hiding rejects" : "Show filtered";
     render();
   };
 
@@ -482,12 +565,32 @@ function mount() {
     );
   };
 
-  panel.querySelector("#uwr-clear").onclick = () => {
+  // Icon-only makes a destructive click cheap, so require a second one.
+  const clearBtn = panel.querySelector("#uwr-clear");
+  let armed = null;
+  clearBtn.onclick = () => {
+    const disarm = () => {
+      armed = null;
+      clearBtn.innerHTML = ICON.trash;
+      clearBtn.dataset.label = "Clear all";
+      clearBtn.classList.remove("on");
+    };
+    if (!armed) {
+      clearBtn.innerHTML = ICON.check;
+      clearBtn.dataset.label = `Really clear ${jobs.length} jobs?`;
+      clearBtn.classList.add("on");
+      armed = setTimeout(disarm, 3000);
+      return;
+    }
+    clearTimeout(armed);
+    disarm();
     jobs = [];
     saveJobs();
+    setStatus("cleared");
     render();
   };
 
+  setStatus(jobs.length ? `${jobs.length} jobs stored` : "hit ↻ to load the feed");
   render();
   startReload();
 

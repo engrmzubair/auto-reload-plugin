@@ -76,13 +76,18 @@
             hookedAtPerf = performance.now();
             installResponseHook();
             report("frame-hooked", { alias, why: "issues the feed query" });
-          } else if (wasHooked && isFeedAlias(alias) && entry.startTime > hookedAtPerf) {
-            // A feed call that STARTED after we hooked, yet produced no capture,
-            // means our hook is installed but never invoked. Replayed entries
-            // from before the hook prove nothing, so they're excluded above.
+          } else if (
+            wasHooked &&
+            isFeedAlias(alias) &&
+            entry.startTime > hookedAtPerf &&
+            captures === 0
+          ) {
+            // "Bypassed" means the hook has NEVER worked in this frame. Once
+            // we've captured even once the hook is proven, and a later quiet call
+            // just means an empty or errored response -- not worth alarming over.
             const at = Date.now();
             setTimeout(() => {
-              if (lastAt < at) report("hook-bypassed", { alias });
+              if (captures === 0 && lastAt < at) report("hook-bypassed", { alias });
             }, 2000);
           }
 
@@ -111,6 +116,7 @@
 
   let lastSig = "";
   let lastAt = 0;
+  let captures = 0;
 
   function publish(payload, via) {
     const found = extractResults(payload);
@@ -124,6 +130,7 @@
     if (sig === lastSig && Date.now() - lastAt < 1000) return;
     lastSig = sig;
     lastAt = Date.now();
+    captures++;
     report("feed-captured", { via, feed: found.feed, count: found.results.length });
     emit(EVENT, { feed: found.feed, results: found.results, at: Date.now() });
   }
