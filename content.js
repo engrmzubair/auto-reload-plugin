@@ -69,6 +69,20 @@ function saveSettings() {
   chrome.storage.local.set({ [STORE_SETTINGS]: settings });
 }
 
+// The popup and this page each hold their own copy of settings. Without this,
+// saving a topic in the popup left the page unaware of it -- and worse, the next
+// thing that wrote settings from here (toggling Auto or sort) wrote back a stale
+// object and silently wiped the topic you just saved.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (changes[STORE_SETTINGS]) {
+    settings = Object.assign(settings, changes[STORE_SETTINGS].newValue || {});
+    prune();
+    render();
+  }
+  if (changes[STORE_RULES]) rules = changes[STORE_RULES].newValue || {};
+});
+
 // ---------- audio ----------
 
 // Chrome blocks audio until the user has interacted with the page, and a
@@ -449,8 +463,32 @@ function mount() {
 
   panel.querySelector("#uwr-test").onclick = () => {
     primeAudio();
+    const demo = {
+      id: "test",
+      ciphertext: "",
+      title: "Test alert — AI Voice Receptionist (Sophiie)",
+      hourlyStated: true,
+      hourlyMin: 25,
+      hourlyMax: 45,
+      fixedBudget: null,
+      spent: 55466,
+      perHire: 305,
+      proposalsTier: "5 to 10",
+    };
     ring(2);
-    speak({ title: "Test alert", hourlyStated: true, hourlyMin: 25, hourlyMax: 45, spent: 55466 });
+    speak(demo);
+    // Exercise the whole alert path -- desktop notification and phone push --
+    // so a bad ntfy topic surfaces now rather than on the job you miss.
+    setStatus("sending test alert…");
+    chrome.runtime.sendMessage(
+      { type: "UWR_ALERT", jobs: [demo], ntfyTopic: settings.ntfyTopic },
+      (res) => {
+        if (chrome.runtime.lastError) return setStatus("test failed: no background worker", "err");
+        if (!settings.ntfyTopic) return setStatus("rang OK — no ntfy topic set, so no phone push");
+        if (res && res.ok) setStatus(`test sent to ntfy.sh/${settings.ntfyTopic} — check your phone`, "ok");
+        else setStatus(`phone push failed: ${(res && res.error) || "unknown"}`, "err");
+      }
+    );
   };
 
   panel.querySelector("#uwr-clear").onclick = () => {

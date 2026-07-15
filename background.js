@@ -34,31 +34,48 @@ function notify(job) {
   });
 }
 
+// ntfy carries the title in an HTTP header, and headers must be Latin-1. Real
+// Upwork titles are full of em-dashes, curly quotes and emoji -- passing one
+// straight through makes fetch throw and the push silently never happens.
+const asciiHeader = (s) =>
+  String(s || "")
+    .replace(/[‐-―]/g, "-")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[^\x20-\x7E]/g, "")
+    .trim()
+    .slice(0, 80) || "New Upwork job";
+
 async function push(topic, job) {
-  if (!topic) return;
+  if (!topic) return { ok: false, error: "no topic set" };
   try {
-    await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
+    const res = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
       method: "POST",
       headers: {
-        Title: job.title.slice(0, 80),
+        Title: asciiHeader(job.title),
         Priority: "high",
         Tags: "moneybag",
         Click: jobUrl(job),
       },
-      body: summarize(job),
+      body: summarize(job), // body is UTF-8, so the stats survive intact
     });
+    if (!res.ok) return { ok: false, error: `ntfy returned ${res.status}` };
+    return { ok: true };
   } catch (e) {
     console.warn("[radar] ntfy push failed:", e);
+    return { ok: false, error: String(e.message || e) };
   }
 }
 
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg && msg.type === "UWR_ALERT") {
-    for (const job of msg.jobs) {
-      notify(job);
-      push(msg.ntfyTopic, job);
-    }
-  }
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (!msg || msg.type !== "UWR_ALERT") return;
+  for (const job of msg.jobs) notify(job);
+  // Report the push result back so a failed topic is visible instead of silent.
+  Promise.all(msg.jobs.map((job) => push(msg.ntfyTopic, job))).then((results) => {
+    const failed = results.find((r) => r && !r.ok);
+    sendResponse(failed || { ok: true, sent: results.length });
+  });
+  return true; // keep the channel open for the async reply
 });
 
 chrome.notifications.onClicked.addListener((id) => {
