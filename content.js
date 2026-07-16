@@ -273,7 +273,7 @@ style.textContent = `
    once collapsed there was no way back. */
 #uwr-panel.collapsed{width:40px}
 #uwr-panel.collapsed #uwr-head b,#uwr-panel.collapsed #uwr-count,#uwr-panel.collapsed #uwr-list,
-#uwr-panel.collapsed #uwr-status,#uwr-panel.collapsed #uwr-foot{display:none}
+#uwr-panel.collapsed #uwr-status,#uwr-panel.collapsed #uwr-foot,#uwr-panel.collapsed #uwr-tick{display:none}
 #uwr-panel.collapsed #uwr-mini{display:flex}
 #uwr-panel.collapsed #uwr-head{padding:10px 8px;justify-content:center;border-bottom:1px solid #262c34}
 
@@ -283,20 +283,59 @@ style.textContent = `
   width:24px;height:24px;flex:none;display:flex;align-items:center;justify-content:center;padding:0}
 #uwr-grip:hover{background:#262c34;color:#e8eaed}
 #uwr-grip svg{width:15px;height:15px}
+/* A chip, not a whisper. Tabular figures so the width never jitters. */
+#uwr-tick{display:inline-flex;align-items:center;gap:5px;padding:3px 8px 3px 6px;border-radius:999px;
+  font:700 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em;background:rgba(56,139,253,.15);border:1px solid rgba(56,139,253,.35);
+  color:#79c0ff;transition:background .2s,border-color .2s,color .2s}
+#uwr-tick:empty{display:none}
+#uwr-tick::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;
+  flex:none;animation:uwr-breathe 2s ease-in-out infinite}
+/* Green as it comes due, so you can read "about to fetch" without reading digits. */
+#uwr-tick.soon{background:rgba(63,185,80,.18);border-color:rgba(63,185,80,.4);color:#56d364}
+@keyframes uwr-breathe{0%,100%{opacity:1}50%{opacity:.25}}
 #uwr-count{margin-left:auto;font-size:11px;color:#8b949e;white-space:nowrap}
 
-/* Collapsed rail: the three numbers that tell you whether to look. */
-#uwr-mini{display:none;flex-direction:column;align-items:center;gap:14px;padding:14px 0}
-.uwr-mstat{position:relative;display:flex;flex-direction:column;align-items:center;cursor:default}
-.uwr-mstat b{font-size:14px;font-weight:700;line-height:1}
-.uwr-mstat i{width:5px;height:5px;border-radius:50%;margin-top:4px;font-style:normal}
-.uwr-mstat.ring b{color:#f85149} .uwr-mstat.ring i{background:#f85149}
-.uwr-mstat.kept b{color:#3fb950} .uwr-mstat.kept i{background:#3fb950}
-.uwr-mstat.filt b{color:#6e7681} .uwr-mstat.filt i{background:#6e7681}
-.uwr-mstat::after{content:attr(data-label);position:absolute;right:calc(100% + 8px);top:0;
-  background:#0b0e12;color:#e8eaed;border:1px solid #30363d;border-radius:4px;padding:3px 7px;
-  font-size:10px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s}
-.uwr-mstat:hover::after{opacity:1}
+/* Collapsed rail. The one question it answers is "is there anything worth
+   opening this for?" -- so RING is the hero and everything else recedes. */
+#uwr-mini{display:none;flex-direction:column;align-items:center;flex:1;padding:12px 5px}
+#uwr-mstats{display:flex;flex-direction:column;align-items:stretch;gap:6px;width:100%}
+
+/* Each stat is a real block with its own surface, so the eye can separate them
+   at a glance instead of parsing three floating numbers. */
+.uwr-mstat{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 7px;
+  background:#1b2027;border:1px solid #262c34;border-radius:7px}
+.uwr-mstat b{font-weight:800;line-height:1;font-variant-numeric:tabular-nums;
+  display:flex;align-items:center;justify-content:center;border-radius:7px;color:#e8eaed}
+.uwr-mstat em{font-size:8px;font-style:normal;font-weight:700;letter-spacing:.07em;color:#8b949e}
+
+/* Colour means something only when the number isn't zero -- a red 0 is a lie. */
+.uwr-mstat.zero b{color:#59606a}
+.uwr-mstat.zero em{color:#59606a}
+
+/* RING is the only reason this rail exists, so it gets the room. */
+.uwr-mstat.ring b{font-size:22px;min-width:26px;height:26px;color:#ff7b72}
+.uwr-mstat.filt{background:transparent;border-color:transparent;padding-top:4px}
+.uwr-mstat.filt b{font-size:13px;height:16px;color:#8b949e}
+
+/* Something is actually ringing: make it impossible to miss from the corner of
+   your eye, since that is the entire reason the rail exists. */
+@keyframes uwr-glow{
+  0%,100%{box-shadow:0 0 0 0 rgba(248,81,73,.55)}
+  50%{box-shadow:0 0 0 6px rgba(248,81,73,0)}
+}
+.uwr-mstat.ring.hot{background:rgba(248,81,73,.16);border-color:rgba(248,81,73,.45)}
+.uwr-mstat.ring.hot b{background:#f85149;color:#fff;animation:uwr-glow 2.2s ease-out infinite}
+.uwr-mstat.ring.hot em{color:#ff7b72}
+
+.uwr-mdiv{display:none}
+
+#uwr-mtick{margin-top:auto;font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-variant-numeric:tabular-nums;letter-spacing:-.04em;color:#79c0ff;
+  background:rgba(56,139,253,.15);border:1px solid rgba(56,139,253,.35);
+  border-radius:6px;padding:5px 4px;transition:background .2s,border-color .2s,color .2s}
+#uwr-mtick:empty{display:none}
+#uwr-mtick.soon{background:rgba(63,185,80,.18);border-color:rgba(63,185,80,.4);color:#56d364}
 #uwr-list{flex:1;overflow-y:auto;padding:8px}
 .uwr-card{position:relative;background:#1b2027;border:1px solid #262c34;border-left-width:3px;border-radius:6px;padding:9px 10px;margin-bottom:7px}
 .uwr-x{position:absolute;top:5px;right:5px;width:18px;height:18px;line-height:1;border:0;border-radius:3px;
@@ -406,16 +445,17 @@ function render() {
   const kept = jobs.filter((j) => j.verdict !== window.UWR.VERDICT.HIDE);
   const rings = kept.filter((j) => j.verdict === window.UWR.VERDICT.RING).length;
   const hidden = jobs.length - kept.length;
-  count.textContent = `${rings} ring · ${kept.length} kept · ${hidden} filtered`;
+  // "kept" used to sit here too, but it CONTAINS the rings -- so "12 ring · 14
+  // kept" read like 26 jobs when it meant 14. Two overlapping counts side by
+  // side is a bug, not a stat. RING is the signal; FILT proves the rules are
+  // working. Quiet-but-kept jobs are still in the list below.
+  count.textContent = `${rings} ring · ${hidden} filtered`;
 
-  // Same three numbers, readable at 40px wide, so a collapsed panel still tells
-  // you whether it's worth opening.
-  const mini = panel.querySelector("#uwr-mini");
-  if (mini) {
-    mini.innerHTML =
-      `<div class="uwr-mstat ring" data-label="${rings} ringing"><b>${rings}</b><i></i></div>` +
-      `<div class="uwr-mstat kept" data-label="${kept.length} kept"><b>${kept.length}</b><i></i></div>` +
-      `<div class="uwr-mstat filt" data-label="${hidden} filtered out"><b>${hidden}</b><i></i></div>`;
+  const mstats = panel.querySelector("#uwr-mstats");
+  if (mstats) {
+    mstats.innerHTML =
+      `<div class="uwr-mstat ring${rings ? " hot" : " zero"}"><b>${rings}</b><em>RING</em></div>` +
+      `<div class="uwr-mstat filt${hidden ? "" : " zero"}"><b>${hidden}</b><em>FILT</em></div>`;
   }
 
   const shown = (showHidden ? jobs.slice() : kept.slice()).sort((a, b) =>
@@ -435,9 +475,13 @@ panel.innerHTML = `
   <div id="uwr-head">
     <button id="uwr-grip">${ICON.right}</button>
     <b>Job Radar</b>
+    <span id="uwr-tick"></span>
     <span id="uwr-count"></span>
   </div>
-  <div id="uwr-mini"></div>
+  <div id="uwr-mini">
+    <div id="uwr-mstats"></div>
+    <div id="uwr-mtick"></div>
+  </div>
   <div id="uwr-list"></div>
   <div id="uwr-status">waiting for feed…</div>
   <div id="uwr-foot">
@@ -655,15 +699,41 @@ function humanDelayMs() {
   return Math.round(min + x);
 }
 
+let nextRefreshAt = 0;
+
 function startReload() {
   clearTimeout(reloadTimer);
-  if (!settings.reloadOn) return;
+  nextRefreshAt = 0;
+  if (!settings.reloadOn) return paintTick();
   const wait = humanDelayMs();
+  nextRefreshAt = Date.now() + wait;
+  paintTick();
   reloadTimer = setTimeout(() => {
     refreshFeed();
     startReload(); // re-roll every time; the interval is never reused
   }, wait);
 }
+
+// Counts down to the real scheduled moment rather than a nominal interval --
+// each wait is a fresh random draw, so there is no fixed number to display.
+function paintTick() {
+  const head = panel.querySelector("#uwr-tick");
+  const rail = panel.querySelector("#uwr-mtick");
+  if (!head) return;
+  let text = "";
+  let soon = false;
+  if (settings.reloadOn && nextRefreshAt) {
+    const s = Math.max(0, Math.round((nextRefreshAt - Date.now()) / 1000));
+    text = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    soon = s <= 10; // turns green as it comes due
+  }
+  for (const el of [head, rail]) {
+    if (!el) continue;
+    el.textContent = text;
+    el.classList.toggle("soon", soon);
+  }
+}
+setInterval(paintTick, 1000);
 
 // Age chips go stale on a page that sits open.
 setInterval(render, 30000);
