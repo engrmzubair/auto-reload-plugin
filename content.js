@@ -490,8 +490,11 @@ function mount() {
   const reloadBtn = panel.querySelector("#uwr-reload");
   function paintReload() {
     reloadBtn.innerHTML = settings.reloadOn ? ICON.pause : ICON.play;
+    // Show the range, not a number -- there is no single interval any more.
     reloadBtn.dataset.label = settings.reloadOn
-      ? `Auto-refresh on (${Math.round(settings.reloadMs / 1000)}s)`
+      ? `Auto-refresh on (random ${POLL_FLOOR_MS / 1000}–${Math.round(
+          Math.max(POLL_FLOOR_MS, settings.reloadMs) / 1000
+        )}s)`
       : "Auto-refresh off";
     reloadBtn.classList.toggle("on", !!settings.reloadOn);
   }
@@ -622,14 +625,44 @@ function refreshFeed() {
   setTimeout(() => here.click(), 2000);
 }
 
+// Never poll faster than this, whatever the setting says.
+const POLL_FLOOR_MS = 30000;
+
+// Pick the wait before the next refresh, shaped like a person rather than a
+// timer.
+//
+// The old version was `interval * (0.85 + random*0.3)` -- a metronome with a
+// wobble. Plot a hundred of those and you get a sharp spike at one value: the
+// giveaway isn't the average gap, it's that the histogram has a peak and the
+// gaps autocorrelate. Nobody checks a job board on a 30-second beat.
+//
+// Someone thinking "I'll look again in a bit" is memoryless: having already
+// waited two minutes tells you nothing about how much longer they'll wait. That
+// property IS the exponential distribution, so that's what we sample -- truncated
+// to [30s, whatever ceiling you set]. Most checks land early in the range, with a
+// real tail out to the ceiling, and no two gaps alike.
+function humanDelayMs() {
+  const min = POLL_FLOOR_MS;
+  const max = Math.max(min, settings.reloadMs || 60000);
+  const span = max - min;
+  if (span < 1000) return min;
+
+  // lambda = 3/span puts the mean about a third of the way up the range, which
+  // keeps it responsive without clustering on the floor.
+  const lambda = 3 / span;
+  const ceiling = 1 - Math.exp(-lambda * span); // renormalise for the truncation
+  const x = -Math.log(1 - Math.random() * ceiling) / lambda;
+  return Math.round(min + x);
+}
+
 function startReload() {
   clearTimeout(reloadTimer);
   if (!settings.reloadOn) return;
-  const jitter = settings.reloadMs * (0.85 + Math.random() * 0.3);
+  const wait = humanDelayMs();
   reloadTimer = setTimeout(() => {
     refreshFeed();
-    startReload();
-  }, jitter);
+    startReload(); // re-roll every time; the interval is never reused
+  }, wait);
 }
 
 // Age chips go stale on a page that sits open.

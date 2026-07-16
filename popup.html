@@ -51,8 +51,11 @@
   <input type="number" id="maxAgeHours">
   <div class="hint">Aged out by <em>posted</em> time. Storage also caps at 400 jobs, newest kept.</div>
 
-  <label>Auto-refresh interval (seconds)</label>
+  <label>Auto-refresh: slowest gap (seconds)</label>
   <input type="number" id="reloadSec">
+  <div class="hint">Each wait is drawn fresh between <b>30s</b> and this — never a fixed beat.
+    Most land early in the range with a long tail, the way a person actually re-checks.
+    Set 120 and you get gaps like 34s, 71s, 41s, 118s, 33s…</div>
 
   <button id="save">Save</button>
   <div id="saved"></div>

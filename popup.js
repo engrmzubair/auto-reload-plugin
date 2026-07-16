@@ -41,8 +41,9 @@ document.getElementById("save").onclick = () => {
       ntfyTopic: document.getElementById("ntfyTopic").value.trim(),
       ringMaxAgeMin: num("ringMaxAgeMin", DEFAULT_SETTINGS.ringMaxAgeMin),
       maxAgeHours: num("maxAgeHours", DEFAULT_SETTINGS.maxAgeHours),
-      // Don't let a typo turn this into a hammer on Upwork's servers.
-      reloadMs: Math.max(15, isFinite(seconds) ? seconds : 30) * 1000,
+      // This is the CEILING, and 30s is the hard floor -- a typo must never be
+      // able to turn this into a hammer.
+      reloadMs: Math.max(30, isFinite(seconds) ? seconds : 60) * 1000,
     });
     chrome.storage.local.set({ uwr_rules: rules, uwr_settings: settings }, () => {
       const el = document.getElementById("saved");
