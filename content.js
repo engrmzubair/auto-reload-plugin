@@ -19,23 +19,33 @@ let settings = {
   sound: true,
   speak: true,
   ntfyTopic: "",
-  reloadMs: 30000,
   reloadOn: false,
+  // Auto-refresh only runs inside these windows, in Pakistan time.
+  schedule: "14:00-17:00, 20:00-00:00",
+  minGapMin: 3,
+  maxGapMin: 8,
+  dailyCap: 80,
   maxAgeHours: 24,
   sortBy: "new",
 };
 let audioCtx = null;
 let reloadTimer = null;
 
+// Auto-refresh bookkeeping, persisted so a page reload can't reset the day's
+// count or cut a break short.
+const STORE_SESSION = "uwr_session";
+let session = { day: "", checks: 0, activeSince: 0, sessionMs: 0, breakUntil: 0 };
+
 // ---------- storage ----------
 
 function load() {
   return new Promise((resolve) => {
-    chrome.storage.local.get([STORE_JOBS, STORE_RULES, STORE_SETTINGS, STORE_DISMISSED], (r) => {
+    chrome.storage.local.get([STORE_JOBS, STORE_RULES, STORE_SETTINGS, STORE_DISMISSED, STORE_SESSION], (r) => {
       jobs = r[STORE_JOBS] || [];
       rules = r[STORE_RULES] || {};
       settings = Object.assign(settings, r[STORE_SETTINGS] || {});
       dismissed = new Set(r[STORE_DISMISSED] || []);
+      session = Object.assign(session, r[STORE_SESSION] || {});
       prune();
       resolve();
     });
@@ -69,6 +79,10 @@ function saveSettings() {
   chrome.storage.local.set({ [STORE_SETTINGS]: settings });
 }
 
+function saveSession() {
+  chrome.storage.local.set({ [STORE_SESSION]: session });
+}
+
 // The popup and this page each hold their own copy of settings. Without this,
 // saving a topic in the popup left the page unaware of it -- and worse, the next
 // thing that wrote settings from here (toggling Auto or sort) wrote back a stale
@@ -76,9 +90,14 @@ function saveSettings() {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   if (changes[STORE_SETTINGS]) {
+    const before = SCHEDULE_KEYS.map((k) => settings[k]).join("|");
     settings = Object.assign(settings, changes[STORE_SETTINGS].newValue || {});
     prune();
     render();
+    // New hours or gaps from the popup take effect now, not after a reload. Only
+    // on those keys: sorting or collapsing also writes settings, and must not
+    // re-roll the countdown.
+    if (SCHEDULE_KEYS.map((k) => settings[k]).join("|") !== before) startReload();
   }
   if (changes[STORE_RULES]) rules = changes[STORE_RULES].newValue || {};
 });
@@ -211,7 +230,7 @@ window.addEventListener("UWR_FEED", (e) => {
   }
 
   const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  setStatus(`${results.length} seen · ${fresh.length} new · ${time}`, "ok");
+  setStatus(`${results.length} seen · ${fresh.length} new · ${time} · ${session.checks} checks today`, "ok");
 
   if (!fresh.length) {
     render();
@@ -293,6 +312,10 @@ style.textContent = `
   flex:none;animation:uwr-breathe 2s ease-in-out infinite}
 /* Green as it comes due, so you can read "about to fetch" without reading digits. */
 #uwr-tick.soon{background:rgba(63,185,80,.18);border-color:rgba(63,185,80,.4);color:#56d364}
+/* Amber on a break, grey off-hours or capped: on, but deliberately not checking. */
+#uwr-tick.rest,#uwr-mtick.rest{background:rgba(210,153,34,.15);border-color:rgba(210,153,34,.4);color:#e3b341}
+#uwr-tick.idle,#uwr-mtick.idle{background:#1b2027;border-color:#30363d;color:#8b949e}
+#uwr-tick.idle::before{animation:none}
 @keyframes uwr-breathe{0%,100%{opacity:1}50%{opacity:.25}}
 #uwr-count{margin-left:auto;font-size:11px;color:#8b949e;white-space:nowrap}
 
@@ -535,10 +558,9 @@ function mount() {
   function paintReload() {
     reloadBtn.innerHTML = settings.reloadOn ? ICON.pause : ICON.play;
     // Show the range, not a number -- there is no single interval any more.
+    const [lo, hi] = gapRangeMs().map((ms) => Math.round(ms / 60000));
     reloadBtn.dataset.label = settings.reloadOn
-      ? `Auto-refresh on (random ${POLL_FLOOR_MS / 1000}–${Math.round(
-          Math.max(POLL_FLOOR_MS, settings.reloadMs) / 1000
-        )}s)`
+      ? `Auto-refresh on (every ${lo}–${hi} min, active hours only)`
       : "Auto-refresh off";
     reloadBtn.classList.toggle("on", !!settings.reloadOn);
   }
@@ -546,7 +568,6 @@ function mount() {
     settings.reloadOn = !settings.reloadOn;
     saveSettings();
     paintReload();
-    if (settings.reloadOn) refreshFeed(); // don't make them wait out the first tick
     startReload();
   };
   paintReload();
@@ -650,8 +671,7 @@ function mount() {
 // A full reload is the one thing that CANNOT work here: Upwork renders the feed
 // server-side on a hard load and never calls GraphQL, so there is no response to
 // intercept. Clicking a tab is a client-side route change, which does fire the
-// query. Bouncing to the sibling tab and back also nets us both feeds, and never
-// throws away scroll position.
+// query, and never throws away scroll position.
 function refreshFeed() {
   const recent = document.querySelector('[data-test="tab-most-recent"]');
   const best = document.querySelector('[data-test="tab-best-matches"]');
@@ -659,35 +679,127 @@ function refreshFeed() {
     setStatus("feed tabs not found — are you on Find Work?", "err");
     return;
   }
-  // Clicking the tab you're already on is a no-op, so bounce to the sibling and
-  // back. Both hops fire a query, which means we capture both feeds.
+  // Clicking the tab you're already on is a no-op, so hop to the sibling and
+  // stay there. One hop is one query -- the old bounce-and-return cost two per
+  // refresh. Alternating still captures both feeds, one per check.
   const onBest = location.pathname.includes("best-matches");
-  const here = onBest ? best : recent;
-  const away = onBest ? recent : best;
   setStatus("refreshing…");
-  away.click();
-  setTimeout(() => here.click(), 2000);
+  (onBest ? recent : best).click();
+  countCheck(Date.now());
 }
 
-// Never poll faster than this, whatever the setting says.
-const POLL_FLOOR_MS = 30000;
+// ---------- schedule ----------
 
-// Pick the wait before the next refresh, shaped like a person rather than a
-// timer.
-//
-// The old version was `interval * (0.85 + random*0.3)` -- a metronome with a
-// wobble. Plot a hundred of those and you get a sharp spike at one value: the
-// giveaway isn't the average gap, it's that the histogram has a peak and the
-// gaps autocorrelate. Nobody checks a job board on a 30-second beat.
+// Pakistan Standard Time is UTC+5 all year (no DST since 2009), so a fixed
+// offset is exact -- and the windows mean PKT whatever this machine's clock says.
+const PKT_OFFSET_MS = 5 * 3600 * 1000;
+const DAY_MS = 86400000;
+// Never poll faster than this, whatever the setting says.
+const GAP_FLOOR_MIN = 2;
+// After 40-60 minutes of checking, step away for 10-20.
+const SESSION_MIN = [40, 60];
+const BREAK_MIN = [10, 20];
+// Settings that change when auto-refresh may run; see the storage listener.
+const SCHEDULE_KEYS = ["reloadOn", "schedule", "minGapMin", "maxGapMin", "dailyCap"];
+
+const randomMs = ([lo, hi]) => Math.round((lo + Math.random() * (hi - lo)) * 60000);
+
+function pktClock(now) {
+  const shifted = now + PKT_OFFSET_MS;
+  const sinceMidnight = ((shifted % DAY_MS) + DAY_MS) % DAY_MS;
+  return {
+    min: sinceMidnight / 60000,
+    day: new Date(shifted).toISOString().slice(0, 10),
+    midnight: now - sinceMidnight,
+  };
+}
+
+// "14:00-17:00, 20:00-00:00" -> [[840, 1020], [1200, 1440]], in PKT minutes. An
+// end at or before its start runs past midnight, so it is split in two.
+function parseWindows(text) {
+  const out = [];
+  for (const part of String(text || "").split(",")) {
+    const m = part.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+    if (!m) continue;
+    const start = +m[1] * 60 + +m[2];
+    const end = +m[3] * 60 + +m[4];
+    if (start >= 1440 || end > 1440) continue;
+    if (end > start) out.push([start, end]);
+    else {
+      out.push([start, 1440]);
+      if (end > 0) out.push([0, end]);
+    }
+  }
+  return out.sort((a, b) => a[0] - b[0]);
+}
+
+function fmtPkt(min) {
+  const h = Math.floor(min / 60) % 24;
+  const m = Math.floor(min % 60);
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+function rollDay(day) {
+  if (session.day === day) return;
+  session = { day, checks: 0, activeSince: 0, sessionMs: 0, breakUntil: 0 };
+  saveSession();
+}
+
+function countCheck(now) {
+  rollDay(pktClock(now).day);
+  session.checks++;
+  saveSession();
+}
+
+// May an automatic check run right now? `until` is when the answer next changes
+// (0 if unknown), which is what the countdown chip shows.
+function autoGate(now) {
+  const t = pktClock(now);
+  rollDay(t.day);
+  const windows = parseWindows(settings.schedule);
+  const win = windows.find(([s, e]) => t.min >= s && t.min < e);
+
+  if (!win) {
+    // Leaving a window ends the session: the next one starts fresh, not mid-break.
+    if (session.activeSince || session.breakUntil) {
+      session.activeSince = session.breakUntil = 0;
+      saveSession();
+    }
+    if (!windows.length) return { mode: "off", until: 0, text: "no active hours set — see popup" };
+    const next = windows.find(([s]) => s > t.min);
+    const start = next ? next[0] : windows[0][0];
+    const until = t.midnight + (next ? 0 : DAY_MS) + start * 60000;
+    return { mode: "off", until, text: `off hours — resumes ${fmtPkt(start)} PKT` };
+  }
+
+  const cap = settings.dailyCap || 80;
+  if (session.checks >= cap) {
+    return { mode: "cap", until: 0, text: `${cap} checks today — daily cap reached, resumes tomorrow` };
+  }
+
+  if (session.breakUntil > now) {
+    const back = pktClock(session.breakUntil).min;
+    return { mode: "break", until: session.breakUntil, text: `on a break — back around ${fmtPkt(back)} PKT` };
+  }
+
+  return { mode: "run", until: 0, text: `active until ${fmtPkt(win[1])} PKT · ${session.checks} checks today` };
+}
+
+function gapRangeMs() {
+  const lo = Math.max(GAP_FLOOR_MIN, settings.minGapMin || 3);
+  const hi = Math.max(lo, settings.maxGapMin || 8);
+  return [lo * 60000, hi * 60000];
+}
+
+// Pick the wait before the next refresh.
 //
 // Someone thinking "I'll look again in a bit" is memoryless: having already
 // waited two minutes tells you nothing about how much longer they'll wait. That
 // property IS the exponential distribution, so that's what we sample -- truncated
-// to [30s, whatever ceiling you set]. Most checks land early in the range, with a
-// real tail out to the ceiling, and no two gaps alike.
+// to the gap range. Most checks land early in the range, with a real tail out to
+// the ceiling, and no two gaps alike.
 function humanDelayMs() {
-  const min = POLL_FLOOR_MS;
-  const max = Math.max(min, settings.reloadMs || 60000);
+  const [min, max] = gapRangeMs();
   const span = max - min;
   if (span < 1000) return min;
 
@@ -700,18 +812,51 @@ function humanDelayMs() {
 }
 
 let nextRefreshAt = 0;
+let gate = null;
 
 function startReload() {
   clearTimeout(reloadTimer);
   nextRefreshAt = 0;
+  const was = gate && gate.mode;
+  gate = null;
   if (!settings.reloadOn) return paintTick();
+
+  const now = Date.now();
+  gate = autoGate(now);
+  // Say so when the mode changes; otherwise leave the status line to the feed.
+  if (gate.mode !== was) setStatus(gate.text, gate.mode === "run" ? "ok" : "");
+
+  if (gate.mode !== "run") {
+    nextRefreshAt = gate.until;
+    // Look again within a minute even when the resume time is hours off, so a
+    // sleeping laptop or new hours from the popup can't strand it.
+    const recheck = gate.until ? Math.min(60000, Math.max(1000, gate.until - now)) : 60000;
+    reloadTimer = setTimeout(startReload, recheck);
+    return paintTick();
+  }
+
   const wait = humanDelayMs();
-  nextRefreshAt = Date.now() + wait;
+  nextRefreshAt = now + wait;
   paintTick();
-  reloadTimer = setTimeout(() => {
+  reloadTimer = setTimeout(autoCheck, wait); // re-rolled every time, never reused
+}
+
+function autoCheck() {
+  const now = Date.now();
+  // The wait may have carried us past the window's end or into the cap.
+  if (autoGate(now).mode === "run") {
+    if (!session.activeSince) {
+      session.activeSince = now;
+      session.sessionMs = randomMs(SESSION_MIN);
+    }
     refreshFeed();
-    startReload(); // re-roll every time; the interval is never reused
-  }, wait);
+    if (now - session.activeSince >= session.sessionMs) {
+      session.breakUntil = now + randomMs(BREAK_MIN);
+      session.activeSince = 0;
+    }
+    saveSession();
+  }
+  startReload();
 }
 
 // Counts down to the real scheduled moment rather than a nominal interval --
@@ -720,19 +865,31 @@ function paintTick() {
   const head = panel.querySelector("#uwr-tick");
   const rail = panel.querySelector("#uwr-mtick");
   if (!head) return;
+  const mode = settings.reloadOn && gate ? gate.mode : "";
   let text = "";
-  let soon = false;
-  if (settings.reloadOn && nextRefreshAt) {
+  let short = "";
+  if (mode === "cap") {
+    text = short = "cap";
+  } else if (mode && nextRefreshAt) {
     const s = Math.max(0, Math.round((nextRefreshAt - Date.now()) / 1000));
-    text = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-    soon = s <= 10; // turns green as it comes due
+    const h = Math.floor(s / 3600);
+    const mm = Math.floor((s % 3600) / 60);
+    const ss = String(s % 60).padStart(2, "0");
+    const clock = h ? `${h}:${String(mm).padStart(2, "0")}:${ss}` : `${mm}:${ss}`;
+    const label = { break: "break ", off: "off " }[mode] || "";
+    text = label + clock;
+    short = h ? `${h}h` : `${mm}:${ss}`; // the rail is too narrow for h:mm:ss
   }
+  const soon = mode === "run" && nextRefreshAt - Date.now() <= 10000; // green as it comes due
   for (const el of [head, rail]) {
     if (!el) continue;
-    el.textContent = text;
+    el.textContent = el === rail ? short : text;
     el.classList.toggle("soon", soon);
+    el.classList.toggle("rest", mode === "break");
+    el.classList.toggle("idle", mode === "off" || mode === "cap");
   }
 }
+
 setInterval(paintTick, 1000);
 
 // Age chips go stale on a page that sits open.

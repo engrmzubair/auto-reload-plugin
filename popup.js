@@ -4,7 +4,10 @@ const DEFAULT_SETTINGS = {
   sound: true,
   speak: true,
   ntfyTopic: "",
-  reloadMs: 30000,
+  schedule: "14:00-17:00, 20:00-00:00",
+  minGapMin: 3,
+  maxGapMin: 8,
+  dailyCap: 80,
   ringMaxAgeMin: 60,
   maxAgeHours: 24,
 };
@@ -18,7 +21,10 @@ chrome.storage.local.get(["uwr_rules", "uwr_settings"], (r) => {
   document.getElementById("ntfyTopic").value = settings.ntfyTopic;
   document.getElementById("ringMaxAgeMin").value = settings.ringMaxAgeMin;
   document.getElementById("maxAgeHours").value = settings.maxAgeHours;
-  document.getElementById("reloadSec").value = Math.round(settings.reloadMs / 1000);
+  document.getElementById("schedule").value = settings.schedule;
+  document.getElementById("minGapMin").value = settings.minGapMin;
+  document.getElementById("maxGapMin").value = settings.maxGapMin;
+  document.getElementById("dailyCap").value = settings.dailyCap;
 });
 
 const num = (id, fallback) => {
@@ -33,7 +39,10 @@ document.getElementById("save").onclick = () => {
     rules[k] = isFinite(n) ? n : DEFAULT_RULES[k];
   });
 
-  const seconds = parseInt(document.getElementById("reloadSec").value, 10);
+  // 2 minutes is the hard floor -- a typo must never be able to turn this into a
+  // hammer. The page enforces it too.
+  const minGap = Math.max(2, num("minGapMin", DEFAULT_SETTINGS.minGapMin));
+  const maxGap = Math.max(minGap, num("maxGapMin", DEFAULT_SETTINGS.maxGapMin));
   chrome.storage.local.get(["uwr_settings"], (r) => {
     const settings = Object.assign({}, DEFAULT_SETTINGS, r.uwr_settings || {}, {
       sound: document.getElementById("sound").checked,
@@ -41,13 +50,15 @@ document.getElementById("save").onclick = () => {
       ntfyTopic: document.getElementById("ntfyTopic").value.trim(),
       ringMaxAgeMin: num("ringMaxAgeMin", DEFAULT_SETTINGS.ringMaxAgeMin),
       maxAgeHours: num("maxAgeHours", DEFAULT_SETTINGS.maxAgeHours),
-      // This is the CEILING, and 30s is the hard floor -- a typo must never be
-      // able to turn this into a hammer.
-      reloadMs: Math.max(30, isFinite(seconds) ? seconds : 60) * 1000,
+      schedule: document.getElementById("schedule").value.trim() || DEFAULT_SETTINGS.schedule,
+      minGapMin: minGap,
+      maxGapMin: maxGap,
+      dailyCap: Math.round(num("dailyCap", DEFAULT_SETTINGS.dailyCap)),
     });
+    delete settings.reloadMs; // replaced by the minute range above
     chrome.storage.local.set({ uwr_rules: rules, uwr_settings: settings }, () => {
       const el = document.getElementById("saved");
-      el.textContent = "Saved — reload the Upwork tab";
+      el.textContent = "Saved";
       setTimeout(() => (el.textContent = ""), 2500);
     });
   });

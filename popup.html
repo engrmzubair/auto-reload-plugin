@@ -51,11 +51,22 @@
   <input type="number" id="maxAgeHours">
   <div class="hint">Aged out by <em>posted</em> time. Storage also caps at 400 jobs, newest kept.</div>
 
-  <label>Auto-refresh: slowest gap (seconds)</label>
-  <input type="number" id="reloadSec">
-  <div class="hint">Each wait is drawn fresh between <b>30s</b> and this — never a fixed beat.
-    Most land early in the range with a long tail, the way a person actually re-checks.
-    Set 120 and you get gaps like 34s, 71s, 41s, 118s, 33s…</div>
+  <hr>
+
+  <label>Auto-refresh hours (Pakistan time)</label>
+  <input type="text" id="schedule" placeholder="14:00-17:00, 20:00-00:00">
+  <div class="hint">24-hour clock, comma-separated windows. Outside them auto-refresh pauses on its own.</div>
+
+  <label>Gap between checks (minutes)</label>
+  <div style="display:flex;gap:6px;align-items:center">
+    <input type="number" id="minGapMin" min="2"><span style="color:#6e7681">to</span><input type="number" id="maxGapMin" min="2">
+  </div>
+  <div class="hint">Each wait is drawn fresh in this range. Never less than 2 minutes.
+    After 40–60 minutes of checking it takes a 10–20 minute break.</div>
+
+  <label>Max checks per day</label>
+  <input type="number" id="dailyCap">
+  <div class="hint">Auto-refresh stops for the day once this many checks have run.</div>
 
   <button id="save">Save</button>
   <div id="saved"></div>
