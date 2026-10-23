@@ -101,6 +101,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (SCHEDULE_KEYS.map((k) => settings[k]).join("|") !== before) startReload();
   }
   if (changes[STORE_RULES]) rules = changes[STORE_RULES].newValue || {};
+  // Jobs and dismissals change in other Upwork tabs too. Without this, a job
+  // dismissed in one tab stayed counted (and ringing) in every other open tab.
+  if (changes[STORE_DISMISSED] || changes[STORE_JOBS]) {
+    if (changes[STORE_DISMISSED]) dismissed = new Set(changes[STORE_DISMISSED].newValue || []);
+    if (changes[STORE_JOBS]) jobs = changes[STORE_JOBS].newValue || [];
+    prune();
+    render();
+  }
 });
 
 // ---------- audio ----------
@@ -348,6 +356,9 @@ style.textContent = `
   0%,100%{box-shadow:0 0 0 0 rgba(248,81,73,.55)}
   50%{box-shadow:0 0 0 6px rgba(248,81,73,0)}
 }
+/* The RING colour above outranks the generic .zero rule, so a zero RING
+   rendered red. This one is more specific. */
+.uwr-mstat.ring.zero b{color:#59606a}
 .uwr-mstat.ring.hot{background:rgba(248,81,73,.16);border-color:rgba(248,81,73,.45)}
 .uwr-mstat.ring.hot b{background:#f85149;color:#fff;animation:uwr-glow 2.2s ease-out infinite}
 .uwr-mstat.ring.hot em{color:#ff7b72}
@@ -558,6 +569,9 @@ panel.innerHTML = `
   </div>`;
 
 function mount() {
+  // A panel left by a previous copy of this script (see orphaned()) may still be
+  // here if that copy hasn't ticked yet; never show two.
+  document.querySelectorAll("#uwr-panel").forEach((p) => p !== panel && p.remove());
   document.body.appendChild(panel);
 
   const grip = panel.querySelector("#uwr-grip");
@@ -969,10 +983,32 @@ function paintTick() {
   }
 }
 
-setInterval(paintTick, 1000);
+// Reloading the extension leaves this script running in already-open pages,
+// cut off from storage, with its panel frozen on whatever it last counted --
+// and the new copy mounts a second panel on top. The old copy notices here and
+// removes itself.
+function orphaned() {
+  try {
+    return !chrome.runtime || !chrome.runtime.id;
+  } catch (_) {
+    return true;
+  }
+}
+
+const tickTimer = setInterval(() => {
+  if (orphaned()) {
+    clearTimeout(reloadTimer);
+    clearInterval(tickTimer);
+    clearInterval(renderTimer);
+    panel.remove();
+    style.remove();
+    return;
+  }
+  paintTick();
+}, 1000);
 
 // Age chips go stale on a page that sits open.
-setInterval(render, 30000);
+const renderTimer = setInterval(render, 30000);
 
 load().then(() => {
   if (document.body) mount();
