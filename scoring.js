@@ -13,19 +13,36 @@
     eliteSpend: 10000, // an elite client can ring without a stated rate
     minRating: 4.0,
     minReviews: 3, // a 5.0 from one review is not a 5.0
+    ringMaxApplicants: 20, // past this many applicants you're no longer early
   };
 
   const VERDICT = { RING: "RING", FEED: "FEED", HIDE: "HIDE" };
 
   const num = (v) => (typeof v === "number" && isFinite(v) ? v : null);
 
+  // The recommendation feeds send money as plain numbers. The Saved searches
+  // feed sends the same fields as strings ("1500.0") or wrapped objects
+  // ({ rawValue: "2689.96" }) -- read as numbers, every saved-search job would
+  // have "never spent" and be hidden.
+  function amountOf(v) {
+    if (v && typeof v === "object") return amountOf("rawValue" in v ? v.rawValue : v.amount);
+    if (typeof v === "string") v = parseFloat(v);
+    return num(v);
+  }
+
+  // ...and the job type as "HOURLY"/"FIXED" rather than 2/1.
+  const isType = (t, code, name) => t === code || String(t).toUpperCase() === name;
+
   function normalize(raw) {
     const c = raw.client || {};
-    const spent = num(c.totalSpent);
+    // Financial privacy reports $0 spent; that's unknown, not "never spent".
+    const spendHidden = !!c.hasFinancialPrivacy;
+    const spent = spendHidden ? null : amountOf(c.totalSpent);
     const hires = num(c.totalHires) || 0;
     const hourly = raw.hourlyBudget || {};
-    const hourlyMin = num(hourly.min) || 0;
-    const hourlyMax = num(hourly.max) || 0;
+    const hourlyMin = amountOf(hourly.min) || 0;
+    const hourlyMax = amountOf(hourly.max) || 0;
+    const isHourly = isType(raw.type, HOURLY, "HOURLY");
 
     return {
       id: raw.uid || raw.id,
@@ -33,16 +50,19 @@
       title: raw.title || "(untitled)",
       description: raw.description || "",
       type: raw.type,
-      isHourly: raw.type === HOURLY,
+      isHourly,
       // Hourly jobs carry amount:0 -- the money is in hourlyBudget. Reading
       // `amount` for an hourly job and calling it the budget throws away the
       // best jobs on the board.
-      fixedBudget: raw.type === FIXED ? num(raw.amount && raw.amount.amount) : null,
+      fixedBudget: isType(raw.type, FIXED, "FIXED") ? amountOf(raw.amount) : null,
       hourlyMin,
       hourlyMax,
       hourlyStated: hourlyMin > 0 || hourlyMax > 0,
       postedAt: Date.parse(raw.publishedOn || raw.createdOn) || null,
       proposalsTier: raw.proposalsTier || "?",
+      // Exact count where the feed provides it (Saved searches does); the tier
+      // above is a bucket like "20 to 50".
+      applicants: num(raw.totalApplicants),
       tier: raw.tierText || raw.tier || "",
       duration: raw.durationLabel || raw.duration || "",
       engagement: raw.engagement || "",
@@ -50,11 +70,12 @@
       isApplied: !!raw.isApplied,
       country: (c.location && c.location.country) || "?",
       spent,
+      spendHidden,
       hires,
       perHire: spent !== null && hires > 0 ? spent / hires : null,
       reviews: num(c.totalReviews) || 0,
       rating: num(c.totalFeedback),
-      paymentVerified: c.paymentVerificationStatus === 1,
+      paymentVerified: c.paymentVerificationStatus === 1 || c.paymentVerificationStatus === "VERIFIED",
       isNewClient: spent === null || hires === 0,
     };
   }
@@ -76,8 +97,14 @@
       kills.push(`fixed $${j.fixedBudget} below $${r.minFixedBudget}`);
     }
 
-    if (j.spent === null) kills.push("client has never spent");
+    if (j.spendHidden) flags.push("client spend hidden");
+    else if (j.spent === null) kills.push("client has never spent");
     else if (j.spent < r.minClientSpend) kills.push(`client spent only $${Math.round(j.spent)}`);
+
+    // Being early is the whole point; a job already past this many applicants
+    // stays in the list but doesn't ring.
+    const crowded = j.applicants !== null && j.applicants > r.ringMaxApplicants;
+    if (crowded) flags.push(`${j.applicants} applicants already`);
 
     if (!j.paymentVerified) flags.push("payment unverified");
     if (j.reviews > 0 && j.reviews < r.minReviews) flags.push(`only ${j.reviews} review(s)`);
@@ -95,7 +122,7 @@
     let verdict;
     if (kills.length) {
       verdict = VERDICT.HIDE;
-    } else if (j.perHire === null || j.perHire < r.ringMinPerHire) {
+    } else if (crowded || j.perHire === null || j.perHire < r.ringMinPerHire) {
       verdict = VERDICT.FEED;
     } else if (j.isHourly && !j.hourlyStated) {
       // No stated rate: only an elite client earns a ring on history alone.

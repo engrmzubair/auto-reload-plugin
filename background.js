@@ -15,8 +15,14 @@ function summarize(j) {
     ? `$${Math.round(j.fixedBudget)} fixed`
     : "rate unstated";
   const perHire = j.perHire ? `$${Math.round(j.perHire)}/hire` : "$?/hire";
-  const spent = j.spent >= 1000 ? `$${(j.spent / 1000).toFixed(1)}K spent` : `$${Math.round(j.spent)} spent`;
-  return `${rate} · ${perHire} · ${spent} · ${j.proposalsTier} proposals`;
+  const spent =
+    j.spent === null || j.spent === undefined
+      ? "spend hidden"
+      : j.spent >= 1000
+      ? `$${(j.spent / 1000).toFixed(1)}K spent`
+      : `$${Math.round(j.spent)} spent`;
+  const applied = typeof j.applicants === "number" ? `${j.applicants} applied` : `${j.proposalsTier} proposals`;
+  return `${rate} · ${perHire} · ${spent} · ${applied}`;
 }
 
 function notify(job) {

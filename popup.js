@@ -1,5 +1,11 @@
-const RULE_FIELDS = ["minFixedBudget", "minHourlyRate", "minClientSpend", "ringMinPerHire"];
-const DEFAULT_RULES = { minFixedBudget: 1000, minHourlyRate: 15, minClientSpend: 2000, ringMinPerHire: 100 };
+const RULE_FIELDS = ["minFixedBudget", "minHourlyRate", "minClientSpend", "ringMinPerHire", "ringMaxApplicants"];
+const DEFAULT_RULES = {
+  minFixedBudget: 1000,
+  minHourlyRate: 15,
+  minClientSpend: 2000,
+  ringMinPerHire: 100,
+  ringMaxApplicants: 20,
+};
 const DEFAULT_SETTINGS = {
   sound: true,
   speak: true,

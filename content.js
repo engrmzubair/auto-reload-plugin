@@ -147,9 +147,9 @@ function speak(job) {
     : job.fixedBudget
     ? `${Math.round(job.fixedBudget)} dollars fixed`
     : "rate not stated";
-  const u = new SpeechSynthesisUtterance(
-    `New job. ${job.title}. ${rate}. Client spent ${Math.round(job.spent)} dollars.`
-  );
+  const spent =
+    job.spent === null || job.spent === undefined ? "" : ` Client spent ${Math.round(job.spent)} dollars.`;
+  const u = new SpeechSynthesisUtterance(`New job. ${job.title}. ${rate}.${spent}`);
   u.rate = 1.05;
   window.speechSynthesis.speak(u);
 }
@@ -415,7 +415,9 @@ function cardHtml(j) {
     : j.fixedBudget !== null
     ? chip(`${M(j.fixedBudget)} fixed`, j.fixedBudget >= 1000 ? "good" : "bad")
     : chip("rate unstated", "warn");
-  const spend = chip(`${M(j.spent)} spent`, j.spent >= 2000 ? "good" : "bad");
+  const spend = j.spendHidden
+    ? chip("spend hidden", "warn")
+    : chip(`${M(j.spent)} spent`, j.spent >= 2000 ? "good" : "bad");
   const rating =
     j.rating === null ? chip("no rating", "warn") : chip(`${j.rating.toFixed(2)} (${j.reviews})`, j.reviews >= 3 && j.rating >= 4.5 ? "good" : "warn");
   const url = j.ciphertext ? `https://www.upwork.com/nx/find-work/most-recent/details/${j.ciphertext}` : "#";
@@ -430,7 +432,7 @@ function cardHtml(j) {
     </div>
     <div class="uwr-meta">
       <span>⏱ ${window.UWR.age(j.postedAt)} old</span>
-      <span>👥 ${j.proposalsTier}</span>
+      <span>👥 ${typeof j.applicants === "number" ? `${j.applicants} applied` : j.proposalsTier}</span>
       <span>📍 ${escapeHtml(j.country)}</span>
       <span>#${j.score}</span>
     </div>
@@ -673,6 +675,19 @@ function mount() {
 // intercept. Clicking a tab is a client-side route change, which does fire the
 // query, and never throws away scroll position.
 function refreshFeed() {
+  // On the Saved searches tab, hop between the "All" chip and the saved-search
+  // chip instead: each hop fires exactly one userSavedSearches query, and the
+  // results are already filtered by your search and sorted newest first.
+  const allChip = document.querySelector('[data-test="select-all"]');
+  const searchChip = document.querySelector('[data-test="select-saved-search"]');
+  if (allChip && searchChip) {
+    const onSearch = /\/nx\/find-work\/\d+/.test(location.pathname);
+    setStatus("refreshing…");
+    (onSearch ? allChip : searchChip).click();
+    countCheck(Date.now());
+    return;
+  }
+
   const recent = document.querySelector('[data-test="tab-most-recent"]');
   const best = document.querySelector('[data-test="tab-best-matches"]');
   if (!recent || !best) {

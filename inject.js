@@ -60,7 +60,7 @@
   // before. So a sub-frame earns its hook: only once we OBSERVE it issuing a
   // recommendations-feed call do we wrap fetch there. Self-targeting, so we
   // never touch a frame that isn't the job feed.
-  const isFeedAlias = (alias) => /RecommendationsFeed/i.test(alias);
+  const isFeedAlias = (alias) => /RecommendationsFeed|userSavedSearches/i.test(alias);
 
   function installObserver() {
     if (typeof PerformanceObserver === "undefined") return;
