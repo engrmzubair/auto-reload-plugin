@@ -375,7 +375,11 @@ style.textContent = `
 .uwr-chip.bad{background:#3a1416;color:#f85149}
 .uwr-chip.warn{background:#39270a;color:#e3b341}
 .uwr-new{background:#1f6feb;color:#fff;font-weight:700}
-.uwr-meta{font-size:10.5px;color:#7d8590;display:flex;gap:8px;flex-wrap:wrap}
+.uwr-meta{font-size:10.5px;color:#7d8590;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.uwr-copy{margin-left:auto;background:#262c34;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;
+  font:600 10.5px/1 system-ui,sans-serif;padding:4px 8px;cursor:pointer}
+.uwr-copy:hover{background:#1f6feb;border-color:#1f6feb;color:#fff}
+.uwr-copy.done{background:#12331d;border-color:#238636;color:#56d364}
 .uwr-empty{color:#7d8590;text-align:center;padding:28px 12px;font-size:12px}
 #uwr-status{padding:4px 12px;background:#0e1116;border-top:1px solid #262c34;font-size:10px;color:#6e7681;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -421,6 +425,9 @@ function cardHtml(j) {
   const rating =
     j.rating === null ? chip("no rating", "warn") : chip(`${j.rating.toFixed(2)} (${j.reviews})`, j.reviews >= 3 && j.rating >= 4.5 ? "good" : "warn");
   const url = j.ciphertext ? `https://www.upwork.com/nx/find-work/most-recent/details/${j.ciphertext}` : "#";
+  // The public job page works from any account -- this is the link to paste
+  // into the real account on the other machine.
+  const shareUrl = j.ciphertext ? `https://www.upwork.com/jobs/${j.ciphertext}` : "";
   const fresh = j.postedAt && Date.now() - j.postedAt < FRESH_MS;
 
   return `<div class="uwr-card ${j.verdict}">
@@ -435,6 +442,7 @@ function cardHtml(j) {
       <span>👥 ${typeof j.applicants === "number" ? `${j.applicants} applied` : j.proposalsTier}</span>
       <span>📍 ${escapeHtml(j.country)}</span>
       <span>#${j.score}</span>
+      ${shareUrl ? `<button class="uwr-copy" data-url="${escapeHtml(shareUrl)}" title="${escapeHtml(shareUrl)}">Copy link</button>` : ""}
     </div>
     ${
       j.kills.length || j.flags.length
@@ -453,6 +461,34 @@ function escapeHtml(s) {
 }
 
 let showHidden = false;
+
+// The clipboard API can be refused (page permissions policy, unfocused
+// document), so fall back to the old select-and-copy trick before giving up.
+async function copyLink(btn) {
+  const url = btn.dataset.url;
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(url);
+    ok = true;
+  } catch (_) {
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      ok = document.execCommand("copy");
+    } catch (_) {}
+    ta.remove();
+  }
+  btn.textContent = ok ? "Copied ✓" : "Copy failed";
+  btn.classList.toggle("done", ok);
+  setStatus(ok ? `copied ${url}` : "couldn't copy — open the job and copy the address bar", ok ? "ok" : "err");
+  setTimeout(() => {
+    btn.textContent = "Copy link";
+    btn.classList.remove("done");
+  }, 1500);
+}
 
 function dismiss(id) {
   if (!id) return;
@@ -576,6 +612,12 @@ function mount() {
 
   // Cards are re-rendered wholesale, so delegate rather than rebind per card.
   panel.querySelector("#uwr-list").addEventListener("click", (e) => {
+    const copy = e.target.closest(".uwr-copy");
+    if (copy) {
+      e.preventDefault();
+      copyLink(copy);
+      return;
+    }
     const x = e.target.closest(".uwr-x");
     if (!x) return;
     e.preventDefault();
