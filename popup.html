@@ -6,7 +6,7 @@
   body{width:270px;margin:0;padding:12px;background:#14181d;color:#e8eaed;font:13px system-ui,sans-serif}
   h1{font-size:13px;margin:0 0 10px}
   label{display:block;font-size:11px;color:#8b949e;margin:9px 0 3px}
-  input[type=number],input[type=text]{width:100%;box-sizing:border-box;background:#0e1116;border:1px solid #30363d;
+  input[type=number],input[type=text],select{width:100%;box-sizing:border-box;background:#0e1116;border:1px solid #30363d;
     color:#e8eaed;border-radius:4px;padding:5px 7px;font-size:12px}
   .chk{display:flex;align-items:center;gap:6px;margin:7px 0;font-size:12px}
   hr{border:0;border-top:1px solid #262c34;margin:12px 0}
@@ -56,6 +56,14 @@
   <div class="hint">Aged out by <em>posted</em> time. Storage also caps at 400 jobs, newest kept.</div>
 
   <hr>
+
+  <label>Refresh by switching between</label>
+  <select id="refreshMode">
+    <option value="recent-saved">Most recent ↔ Saved searches</option>
+    <option value="best-recent">Best matches ↔ Most recent</option>
+    <option value="saved-chips">Saved searches only</option>
+  </select>
+  <div class="hint">Each check clicks the other tab, so both feeds get read. "Saved searches only" stays on that tab and switches its chips.</div>
 
   <label>Auto-refresh hours (Pakistan time)</label>
   <input type="text" id="schedule" placeholder="14:00-17:00, 20:00-00:00">

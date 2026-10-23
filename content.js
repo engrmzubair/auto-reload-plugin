@@ -20,6 +20,7 @@ let settings = {
   speak: true,
   ntfyTopic: "",
   reloadOn: false,
+  refreshMode: "recent-saved", // see REFRESH_PAIRS
   // Auto-refresh only runs inside these windows, in Pakistan time.
   schedule: "14:00-17:00, 20:00-00:00",
   minGapMin: 3,
@@ -716,32 +717,53 @@ function mount() {
 // server-side on a hard load and never calls GraphQL, so there is no response to
 // intercept. Clicking a tab is a client-side route change, which does fire the
 // query, and never throws away scroll position.
+const TAB_IDS = { best: "tab-best-matches", recent: "tab-most-recent", saved: "tab-saved_search" };
+const TAB_NAMES = { best: "Best matches", recent: "Most recent", saved: "Saved searches" };
+// Which pair of tabs a refresh alternates between; chosen in the popup.
+const REFRESH_PAIRS = { "recent-saved": ["recent", "saved"], "best-recent": ["best", "recent"] };
+const findTab = (key) => document.querySelector(`[data-test="${TAB_IDS[key]}"]`);
+
 function refreshFeed() {
-  // On the Saved searches tab, hop between the "All" chip and the saved-search
-  // chip instead: each hop fires exactly one userSavedSearches query, and the
-  // results are already filtered by your search and sorted newest first.
+  const mode = settings.refreshMode || "recent-saved";
+  if (mode === "saved-chips") return refreshSavedChips();
+
+  // Clicking the tab you're already on is a no-op, so hop to the other tab of
+  // the pair and stay there. One hop is one query, and alternating captures
+  // both feeds, one per check. From any other tab, the first hop lands on the
+  // pair's first tab.
+  const [a, b] = REFRESH_PAIRS[mode] || REFRESH_PAIRS["recent-saved"];
+  const tabA = findTab(a);
+  const tabB = findTab(b);
+  if (!tabA || !tabB) {
+    setStatus(`${TAB_NAMES[a]} / ${TAB_NAMES[b]} tabs not found — are you on Find Work?`, "err");
+    return;
+  }
+  setStatus("refreshing…");
+  (tabA.classList.contains("is-active") ? tabB : tabA).click();
+  countCheck(Date.now());
+}
+
+// Saved searches only: hop between the "All" chip and the saved-search chip.
+// Each hop fires exactly one userSavedSearches query, already filtered by your
+// search and sorted newest first.
+function refreshSavedChips() {
   const allChip = document.querySelector('[data-test="select-all"]');
   const searchChip = document.querySelector('[data-test="select-saved-search"]');
-  if (allChip && searchChip) {
-    const onSearch = /\/nx\/find-work\/\d+/.test(location.pathname);
+  if (!allChip || !searchChip) {
+    // Not on the Saved searches tab yet -- opening it is itself one query.
+    const saved = findTab("saved");
+    if (!saved) {
+      setStatus("Saved searches tab not found — are you on Find Work?", "err");
+      return;
+    }
     setStatus("refreshing…");
-    (onSearch ? allChip : searchChip).click();
+    saved.click();
     countCheck(Date.now());
     return;
   }
-
-  const recent = document.querySelector('[data-test="tab-most-recent"]');
-  const best = document.querySelector('[data-test="tab-best-matches"]');
-  if (!recent || !best) {
-    setStatus("feed tabs not found — are you on Find Work?", "err");
-    return;
-  }
-  // Clicking the tab you're already on is a no-op, so hop to the sibling and
-  // stay there. One hop is one query -- the old bounce-and-return cost two per
-  // refresh. Alternating still captures both feeds, one per check.
-  const onBest = location.pathname.includes("best-matches");
+  const onSearch = /\/nx\/find-work\/\d+/.test(location.pathname);
   setStatus("refreshing…");
-  (onBest ? recent : best).click();
+  (onSearch ? allChip : searchChip).click();
   countCheck(Date.now());
 }
 

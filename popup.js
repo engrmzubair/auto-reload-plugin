@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = {
   sound: true,
   speak: true,
   ntfyTopic: "",
+  refreshMode: "recent-saved",
   schedule: "14:00-17:00, 20:00-00:00",
   minGapMin: 3,
   maxGapMin: 8,
@@ -27,6 +28,7 @@ chrome.storage.local.get(["uwr_rules", "uwr_settings"], (r) => {
   document.getElementById("ntfyTopic").value = settings.ntfyTopic;
   document.getElementById("ringMaxAgeMin").value = settings.ringMaxAgeMin;
   document.getElementById("maxAgeHours").value = settings.maxAgeHours;
+  document.getElementById("refreshMode").value = settings.refreshMode;
   document.getElementById("schedule").value = settings.schedule;
   document.getElementById("minGapMin").value = settings.minGapMin;
   document.getElementById("maxGapMin").value = settings.maxGapMin;
@@ -56,6 +58,7 @@ document.getElementById("save").onclick = () => {
       ntfyTopic: document.getElementById("ntfyTopic").value.trim(),
       ringMaxAgeMin: num("ringMaxAgeMin", DEFAULT_SETTINGS.ringMaxAgeMin),
       maxAgeHours: num("maxAgeHours", DEFAULT_SETTINGS.maxAgeHours),
+      refreshMode: document.getElementById("refreshMode").value,
       schedule: document.getElementById("schedule").value.trim() || DEFAULT_SETTINGS.schedule,
       minGapMin: minGap,
       maxGapMin: maxGap,
